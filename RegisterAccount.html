@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create Account</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: #ffffff;
+            width: 450px;
+            max-width: 100%;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        h2 {
+            margin-bottom: 25px;
+            color: #333;
+            text-align: center;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+            text-align: center;
+            line-height: 1.5;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #0078ff;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-primary { 
+            background: #0078ff; 
+            color: white;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background: #0066dd;
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-secondary { 
+            background: #e0e0e0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+        .error-message {
+            display: none;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .success-message {
+            display: none;
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .back-link {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .back-link a {
+            color: #0078ff;
+            text-decoration: none;
+        }
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+        .choice-screen {
+            display: none;
+            text-align: center;
+        }
+        .choice-screen.active {
+            display: block;
+        }
+        .choice-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .choice-buttons .btn {
+            flex: 1;
+        }
+        .success-icon {
+            font-size: 60px;
+            color: #28a745;
+            margin: 20px 0;
+        }
+        .form-screen {
+            display: block;
+        }
+        .form-screen.hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Registration Form Screen -->
+        <div id="formScreen" class="form-screen">
+            <h2>Create Your Student Account</h2>
+            <p class="subtitle">Register for access to the student portal. You can enable facial recognition login after creating your account for faster, more secure access.</p>
+
+            <div id="errorMessage" class="error-message"></div>
+            <div id="successMessage" class="success-message"></div>
+
+            <form id="registerForm">
+            <div class="input-group">
+                <label for="name">Full Name</label>
+                <input type="text" id="name" name="name" placeholder="e.g., John Smith" required />
+                <small style="color: #666; font-size: 12px;">Enter your legal name as it appears on your student records</small>
+            </div>
+
+            <div class="input-group">
+                <label for="email">School Email Address</label>
+                <input type="email" id="email" name="email" placeholder="yourname@school.edu" required />
+                <small style="color: #666; font-size: 12px;">Use your official school email address</small>
+            </div>
+
+            <div class="input-group">
+                <label for="password">Create Password</label>
+                <input type="password" id="password" name="password" placeholder="Minimum 6 characters" required minlength="6" />
+                <small style="color: #666; font-size: 12px;">Choose a strong password to protect your account</small>
+            </div>
+
+            <div class="input-group">
+                <label for="confirmPassword">Confirm Password</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Re-enter your password" required />
+            </div>
+
+                <button type="submit" class="btn btn-primary" id="submitBtn">Create Account</button>
+            </form>
+
+            <div class="back-link">
+                <a href="login.html">← Back to Login</a>
+            </div>
+        </div>
+
+        <!-- Success & Choice Screen -->
+        <div id="choiceScreen" class="choice-screen">
+            <div class="success-icon">✓</div>
+            <h2 style="color: #28a745; margin-bottom: 10px;">Account Created Successfully!</h2>
+            <p class="subtitle">Your student account has been created. Would you like to set up facial recognition login now? This will allow you to quickly access your account using your face instead of typing your password.</p>
+            
+            <div class="choice-buttons">
+                <button class="btn btn-primary" id="registerFaceBtn">Yes, Set Up Facial Recognition</button>
+                <button class="btn btn-secondary" id="skipFaceBtn">Skip for Now</button>
+            </div>
+
+            <p style="margin-top: 20px; font-size: 12px; color: #999;">
+                You can always set up facial recognition later from the login page. For now, you can login using your email and password.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = "http://localhost:8000";
+        const registerForm = document.getElementById('registerForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const successMessage = document.getElementById('successMessage');
+        const submitBtn = document.getElementById('submitBtn');
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            successMessage.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successMessage.textContent = message;
+            successMessage.style.display = 'block';
+            errorMessage.style.display = 'none';
+        }
+
+        registerForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('name').value.trim();
+            const email = document.getElementById('email').value.trim().toLowerCase();
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            // Validation
+            if (password !== confirmPassword) {
+                showError('Passwords do not match');
+                return;
+            }
+
+            if (password.length < 6) {
+                showError('Password must be at least 6 characters');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creating Account...';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/register_account`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, name })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Store email temporarily for face registration
+                    sessionStorage.setItem('pendingEmail', email);
+                    sessionStorage.setItem('pendingPassword', password);
+                    
+                    // Hide form and show choice screen
+                    document.getElementById('formScreen').classList.add('hidden');
+                    document.getElementById('choiceScreen').classList.add('active');
+                } else {
+                    showError(result.error || 'Failed to create account');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Create Account';
+                }
+            } catch (error) {
+                showError('Error connecting to server. Make sure the backend is running on port 8000.');
+                console.error(error);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create Account';
+            }
+        });
+
+        // Handle choice buttons
+        document.getElementById('registerFaceBtn').addEventListener('click', function() {
+            window.location.href = 'RegisterFace.html';
+        });
+
+        document.getElementById('skipFaceBtn').addEventListener('click', function() {
+            // Clear session storage
+            sessionStorage.removeItem('pendingEmail');
+            sessionStorage.removeItem('pendingPassword');
+            window.location.href = 'login.html';
+        });
+    </script>
+</body>
+</html>
+

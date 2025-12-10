@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register Face</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: #ffffff;
+            width: 450px;
+            max-width: 100%;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+        h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+        video {
+            width: 100%;
+            height: 280px;
+            background: #000;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            object-fit: cover;
+        }
+        .instruction-box {
+            background: #e7f3ff;
+            border-left: 4px solid #0078ff;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: left;
+            border-radius: 5px;
+        }
+        .instruction-box h4 {
+            margin: 0 0 10px 0;
+            color: #0078ff;
+            font-size: 16px;
+        }
+        .instruction-box ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        .instruction-box ul li {
+            margin-bottom: 5px;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-primary { 
+            background: #0078ff; 
+            color: white;
+            font-weight: bold;
+        }
+        .btn-primary:hover {
+            background: #0066dd;
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-secondary { 
+            background: #e0e0e0;
+            color: #333;
+        }
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+        .error-message {
+            display: none;
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .success-message {
+            display: none;
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .success-icon {
+            font-size: 60px;
+            color: #28a745;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Set Up Facial Recognition</h2>
+        <p class="subtitle">Register your face to enable quick and secure login. Your facial data is encrypted and stored securely for authentication purposes only.</p>
+
+        <div id="errorMessage" class="error-message"></div>
+        <div id="successMessage" class="success-message"></div>
+
+        <div id="registrationForm">
+            <div class="instruction-box">
+                <h4>📸 Tips for Best Results:</h4>
+                <ul>
+                    <li>Position your face in the center of the camera frame</li>
+                    <li>Ensure you have good, even lighting on your face</li>
+                    <li>Remove sunglasses or heavy glasses if possible</li>
+                    <li>Look directly at the camera with a neutral expression</li>
+                    <li>Keep still and wait for the capture to complete</li>
+                    <li>Make sure only your face is visible in the frame</li>
+                </ul>
+            </div>
+
+            <video id="cameraPreview" autoplay playsinline></video>
+
+            <button class="btn btn-primary" id="captureBtn">Capture Face</button>
+            <button class="btn btn-secondary" onclick="skipFaceRegistration()">Skip for Now</button>
+        </div>
+
+        <div id="successScreen" style="display: none;">
+            <div class="success-icon">✓</div>
+            <h3 style="color: #28a745;">Facial Recognition Set Up Complete!</h3>
+            <p class="subtitle">Your face has been successfully registered. You can now use facial recognition for quick and secure login to your student portal.</p>
+            <button class="btn btn-primary" onclick="window.location.href='login.html'">Go to Login</button>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = "http://localhost:8000";
+        const video = document.getElementById("cameraPreview");
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+
+        let stream = null;
+
+        // Get credentials from session storage
+        const email = sessionStorage.getItem('pendingEmail');
+        const password = sessionStorage.getItem('pendingPassword');
+
+        if (!email || !password) {
+            alert('Please create an account first');
+            window.location.href = 'RegisterAccount.html';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('successMessage').style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                showError("Camera access denied or unavailable.");
+                console.error(err);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+        }
+
+        document.getElementById('captureBtn').addEventListener('click', async function() {
+            if (!stream) {
+                showError("Camera not started. Please wait...");
+                return;
+            }
+
+            this.disabled = true;
+            this.textContent = 'Processing...';
+
+            // Capture frame
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/register_face`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        image: imageData,
+                        email: email,
+                        password: password
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    stopCamera();
+                    document.getElementById('registrationForm').style.display = 'none';
+                    document.getElementById('successScreen').style.display = 'block';
+                    // Clear session storage
+                    sessionStorage.removeItem('pendingEmail');
+                    sessionStorage.removeItem('pendingPassword');
+                } else {
+                    showError(result.error || 'Failed to register face');
+                    this.disabled = false;
+                    this.textContent = 'Capture Face';
+                }
+            } catch (error) {
+                showError('Error connecting to server. Make sure the backend is running.');
+                console.error(error);
+                this.disabled = false;
+                this.textContent = 'Capture Face';
+            }
+        });
+
+        function skipFaceRegistration() {
+            if (confirm('You can register your face later. Continue to login?')) {
+                sessionStorage.removeItem('pendingEmail');
+                sessionStorage.removeItem('pendingPassword');
+                window.location.href = 'login.html';
+            }
+        }
+
+        // Start camera when page loads
+        window.onload = startCamera;
+
+        // Clean up camera when leaving page
+        window.addEventListener('beforeunload', stopCamera);
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Facial Recognition</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background: #ffffff;
+            width: 400px;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+        h2 {
+            margin-bottom: 20px;
+        }
+        video {
+            width: 100%;
+            height: 250px;
+            background: #000;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            object-fit: cover;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .btn-primary { background: #0078ff; color: white; }
+        .btn-secondary { background: #e0e0e0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Secure Login</h2>
+        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Use facial recognition for quick and secure access to your student portal</p>
+
+        <video id="cameraPreview" autoplay playsinline></video>
+
+        <div id="statusMessage" style="margin: 10px 0; font-size: 14px; color: #666; min-height: 20px;"></div>
+
+        <button class="btn btn-primary" id="scanBtn">Scan Face to Login</button>
+        <button class="btn btn-secondary" onclick="window.location.href='ManualLogin.html'">Use Email / Password Instead</button>
+        <button class="btn btn-secondary" onclick="window.location.href='RegisterAccount.html'">Create New Account</button>
+        <button class="btn btn-secondary" onclick="window.location.href='AdminLogin.html'" style="background: #dc3545; color: white;">Administrator Access</button>
+
+        <div style="margin-top: 20px; font-size: 14px; color: #666;">
+            <p style="margin: 5px 0;">Having trouble with facial recognition?</p>
+            <a href="ResetFacialRecognition.html" style="color: #0078ff; text-decoration: none;">Reset Your Facial Recognition Data</a>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = "http://localhost:8000";
+        const video = document.getElementById("cameraPreview");
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        let stream = null;
+        let isScanning = false;
+
+        // Auto-start camera when page loads
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                document.getElementById('statusMessage').textContent = "Camera access denied or unavailable.";
+                document.getElementById('statusMessage').style.color = '#d32f2f';
+                console.error(err);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+        }
+
+        async function scanFace() {
+            if (!stream) {
+                alert("Please wait for camera to start.");
+                return;
+            }
+
+            if (isScanning) return;
+            isScanning = true;
+
+            const scanBtn = document.getElementById('scanBtn');
+            const statusMsg = document.getElementById('statusMessage');
+            
+            scanBtn.disabled = true;
+            scanBtn.textContent = 'Scanning...';
+            statusMsg.textContent = 'Position your face in the frame...';
+            statusMsg.style.color = '#666';
+
+            // Capture frame
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/verify_face`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    statusMsg.textContent = `Login successful! Welcome, ${result.name || result.email || result.user_id}`;
+                    statusMsg.style.color = '#28a745';
+                    
+                    // Store login info in session
+                    sessionStorage.setItem('loggedIn', 'true');
+                    sessionStorage.setItem('userEmail', result.email || '');
+                    sessionStorage.setItem('userName', result.name || '');
+                    sessionStorage.setItem('userId', result.user_id);
+
+                    setTimeout(() => {
+                        window.location.href = 'home page.html';
+                    }, 1500);
+                } else {
+                    statusMsg.textContent = result.error || 'Face not recognized. Please try again.';
+                    statusMsg.style.color = '#d32f2f';
+                    scanBtn.disabled = false;
+                    scanBtn.textContent = 'Scan Face to Login';
+                    isScanning = false;
+                }
+            } catch (error) {
+                statusMsg.textContent = 'Error connecting to server. Make sure the backend is running on port 8000.';
+                statusMsg.style.color = '#d32f2f';
+                console.error(error);
+                scanBtn.disabled = false;
+                scanBtn.textContent = 'Scan Face to Login';
+                isScanning = false;
+            }
+        }
+
+        document.getElementById('scanBtn').addEventListener('click', scanFace);
+
+        window.onload = startCamera;
+        window.addEventListener('beforeunload', stopCamera);
+    </script>
+</body>
+</html>
