@@ -125,7 +125,18 @@ Then open: `http://localhost:8080/home page.html`
 ## 📁 Project Structure
 
 ```
-FYP/
+FYP-Facial-Recognition-Login/
+├── frontend/                    # Frontend HTML pages
+│   ├── home page.html          # Landing page
+│   ├── login.html              # Facial recognition login
+│   ├── ManualLogin.html        # Email/password login
+│   ├── RegisterAccount.html    # Account registration
+│   ├── RegisterFace.html       # Face registration
+│   ├── ResetFacialRecognition.html
+│   ├── AdminLogin.html         # Admin login
+│   ├── AdminDashboard.html     # Admin dashboard
+│   ├── ForgotPassword.html
+│   └── ForgotEmail.html
 ├── fyp_face_login/              # Backend (BCE Framework)
 │   ├── app.py                   # Flask routes
 │   ├── entities/                # Entity Layer
@@ -135,11 +146,15 @@ FYP/
 │   ├── user_accounts.json       # User data (created on first run)
 │   ├── known_faces.json         # Face encodings (created on first run)
 │   └── admin_config.json       # Admin config (created on first run)
-├── *.html                       # Frontend pages
+├── docs/                        # Documentation
+│   ├── ARCHITECTURE.md          # Architecture documentation
+│   ├── AUTHENTICATION_LOGIC.md  # Authentication logic
+│   ├── PROJECT_DOCUMENTATION.md # Complete documentation
+│   ├── GITHUB_SETUP.md          # GitHub setup guide
+│   └── ...
 ├── requirements.txt             # Python dependencies
 ├── README.md                    # This file
-├── ARCHITECTURE.md              # Architecture documentation
-└── PROJECT_DOCUMENTATION.md     # Complete project documentation
+└── .gitignore                   # Git ignore rules
 ```
 
 ## 🔐 Default Credentials
@@ -152,9 +167,10 @@ FYP/
 
 ## 📚 Documentation
 
-- **[PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md)**: Complete project documentation
-- **[ARCHITECTURE.md](ARCHITECTURE.md)**: BCE framework architecture details
-- **[AUTHENTICATION_LOGIC.md](AUTHENTICATION_LOGIC.md)**: Authentication logic explanation
+- **[docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)**: Complete project documentation
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: BCE framework architecture details
+- **[docs/AUTHENTICATION_LOGIC.md](docs/AUTHENTICATION_LOGIC.md)**: Authentication logic explanation
+- **[docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md)**: GitHub repository setup guide
 
 ## 🔧 Configuration
 
@@ -173,11 +189,11 @@ CORS is configured in `fyp_face_login/app.py` to allow all origins for developme
 
 ## 🧪 Testing
 
-1. Create a test account via `RegisterAccount.html`
-2. Register your face via `RegisterFace.html`
-3. Test facial recognition login via `login.html`
-4. Test email/password login via `ManualLogin.html`
-5. Access admin dashboard via `AdminLogin.html`
+1. Create a test account via `frontend/RegisterAccount.html`
+2. Register your face via `frontend/RegisterFace.html`
+3. Test facial recognition login via `frontend/login.html`
+4. Test email/password login via `frontend/ManualLogin.html`
+5. Access admin dashboard via `frontend/AdminLogin.html`
 
 ## 📝 API Endpoints
 
