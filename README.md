@@ -102,7 +102,7 @@ The server will start on `http://localhost:8000`
 ### Start the Frontend
 
 **Option 1: Using Live Server (VS Code)**
-- Right-click on `home page.html`
+- Right-click on `frontend/home page.html`
 - Select "Open with Live Server"
 
 **Option 2: Using Python HTTP Server**
@@ -117,10 +117,10 @@ python3 -m http.server 8080
 python -m http.server 8080
 ```
 
-Then open: `http://localhost:8080/home page.html`
+Then open: `http://localhost:8080/frontend/home page.html`
 
 **Option 3: Direct File Open**
-- Simply double-click `home page.html` (some browsers may block CORS)
+- Navigate to `frontend/` folder and double-click `home page.html` (some browsers may block CORS)
 
 ## 📁 Project Structure
 
