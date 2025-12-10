@@ -25,15 +25,26 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 ## 📋 Prerequisites
 
-- Python 3.13+
+- Python 3.13+ (or Python 3.8+)
 - CMake (for dlib installation)
 - Web browser with camera access
 - pip (Python package manager)
 
-### Installing CMake (macOS)
+### Installing CMake
 
+**macOS:**
 ```bash
 brew install cmake
+```
+
+**Windows:**
+1. Download CMake installer from: https://cmake.org/download/
+2. Run the installer and select "Add CMake to system PATH"
+3. Restart your terminal/command prompt after installation
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get install cmake
 ```
 
 ## 🛠️ Installation
@@ -45,10 +56,20 @@ brew install cmake
    ```
 
 2. **Create and activate virtual environment**
+
+   **macOS/Linux:**
    ```bash
    python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   source venv/bin/activate
    ```
+
+   **Windows:**
+   ```bash
+   python -m venv venv
+   venv\Scripts\activate
+   ```
+   
+   You should see `(venv)` in your terminal prompt when activated.
 
 3. **Install dependencies**
    ```bash
@@ -59,12 +80,24 @@ brew install cmake
 
 ### Start the Backend Server
 
+**macOS/Linux:**
+```bash
+cd fyp_face_login
+python app.py
+```
+
+**Windows:**
 ```bash
 cd fyp_face_login
 python app.py
 ```
 
 The server will start on `http://localhost:8000`
+
+**Note:** If you encounter issues with `dlib` installation on Windows:
+1. Make sure CMake is installed and added to PATH
+2. You may need Visual Studio Build Tools (C++ compiler)
+3. Alternative: Use pre-built wheels: `pip install dlib` (may require specific Python version)
 
 ### Start the Frontend
 
@@ -73,9 +106,17 @@ The server will start on `http://localhost:8000`
 - Select "Open with Live Server"
 
 **Option 2: Using Python HTTP Server**
+
+**macOS/Linux:**
 ```bash
 python3 -m http.server 8080
 ```
+
+**Windows:**
+```bash
+python -m http.server 8080
+```
+
 Then open: `http://localhost:8080/home page.html`
 
 **Option 3: Direct File Open**
@@ -165,21 +206,40 @@ CORS is configured in `fyp_face_login/app.py` to allow all origins for developme
 
 ## 🐛 Troubleshooting
 
-**Server won't start:**
+### Server won't start:
 - Check if port 8000 is already in use
 - Ensure virtual environment is activated
 - Verify all dependencies are installed
+- **Windows:** Make sure Python is added to PATH
 
-**Face recognition not working:**
+### Face recognition not working:
 - Grant camera permissions in browser
 - Ensure good lighting
 - Make sure only one face is visible
 - Check browser console for errors
 
-**Connection errors:**
+### Connection errors:
 - Ensure backend is running on port 8000
 - Check that frontend is using HTTP (not file://)
 - Verify CORS is enabled in backend
+
+### Windows-specific issues:
+
+**dlib installation fails:**
+- Install Visual Studio Build Tools (C++ compiler)
+- Download from: https://visualstudio.microsoft.com/downloads/
+- Select "Desktop development with C++" workload
+- Restart terminal and try: `pip install dlib`
+
+**CMake not found:**
+- Make sure CMake is installed and added to system PATH
+- Restart terminal/command prompt after installation
+- Verify: `cmake --version` in command prompt
+
+**Python command not found:**
+- Use `python` instead of `python3` on Windows
+- Make sure Python is added to PATH during installation
+- Try: `py -m pip install -r requirements.txt`
 
 ## 📄 License
 
