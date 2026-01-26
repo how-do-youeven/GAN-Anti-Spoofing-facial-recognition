@@ -129,4 +129,42 @@ class UserService:
         if user:
             user.face_registered = self.face_repo.exists(user.user_id)
         return user
+    
+    def disable_face_login(self, email: str) -> Tuple[bool, Optional[str]]:
+        """
+        Disable face login for a user
+        Returns: (success, error_message)
+        """
+        email_lower = email.strip().lower()
+        user = self.user_repo.find_by_email(email_lower)
+        
+        if not user:
+            return False, "User not found"
+        
+        user.face_login_disabled = True
+        self.user_repo.save(user)
+        
+        return True, None
+    
+    def enable_face_login(self, email: str, password: str) -> Tuple[bool, Optional[str]]:
+        """
+        Re-enable face login for a user (requires password verification)
+        Returns: (success, error_message)
+        """
+        email_lower = email.strip().lower()
+        user = self.user_repo.find_by_email(email_lower)
+        
+        if not user:
+            return False, "User not found"
+        
+        # Verify password
+        if not self.verify_password(password, user.password_hash):
+            return False, "Invalid password"
+        
+        # Re-enable face login and reset failure count
+        user.face_login_disabled = False
+        user.face_login_failures = 0
+        self.user_repo.save(user)
+        
+        return True, None
 

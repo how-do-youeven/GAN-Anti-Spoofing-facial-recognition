@@ -98,6 +98,10 @@
             background: #dc3545;
             color: white;
         }
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
         .btn:hover {
             opacity: 0.9;
         }
@@ -114,16 +118,17 @@
             margin-bottom: 20px;
         }
         .face-preview {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
+            width: 200px;
+            height: 200px;
+            border-radius: 10px;
             background: #f0f0f0;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 20px 0;
-            border: 3px solid #0078ff;
+            margin: 10px 0;
+            border: 2px solid #0078ff;
             overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .face-preview img {
             width: 100%;
@@ -134,6 +139,53 @@
             color: #999;
             font-size: 14px;
             text-align: center;
+            padding: 20px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .modal-content h3 {
+            margin-top: 0;
+            color: #0059b3;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -179,6 +231,15 @@
                     </div>
                 </div>
                 
+                <div class="info-row" id="faceImageRow" style="display: none;">
+                    <div class="info-label">Registered Face:</div>
+                    <div class="info-value">
+                        <div class="face-preview" id="facePreview">
+                            <div class="face-preview-placeholder">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="info-row">
                     <div class="info-label">Face Login Status:</div>
                     <div class="info-value">
@@ -194,12 +255,31 @@
                 <div style="margin-top: 20px;">
                     <a href="ResetFacialRecognition.html" class="btn btn-primary">Reset Facial Recognition</a>
                     <a href="RegisterFace.html" class="btn btn-secondary" id="registerFaceBtn" style="display: none;">Register Face</a>
+                    <button class="btn btn-warning" id="disableFaceLoginBtn" style="display: none;" onclick="disableFaceLogin()">Disable Face Login</button>
+                    <button class="btn btn-primary" id="enableFaceLoginBtn" style="display: none;" onclick="showEnableModal()">Re-enable Face Login</button>
                 </div>
             </div>
 
             <div style="margin-top: 20px;">
                 <a href="home page.html" class="btn btn-secondary">Back to Home</a>
                 <button onclick="logout()" class="btn btn-danger">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enable Face Login Modal -->
+    <div id="enableModal" class="modal">
+        <div class="modal-content">
+            <h3>Re-enable Face Login</h3>
+            <p style="color: #666; margin-bottom: 15px;">Please enter your password to re-enable face login. This will also reset your failure count.</p>
+            <div id="enableError" class="error" style="display: none; margin-bottom: 15px;"></div>
+            <div class="input-group">
+                <label for="enablePassword">Password</label>
+                <input type="password" id="enablePassword" placeholder="Enter your password" />
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeEnableModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="enableFaceLogin()">Enable Face Login</button>
             </div>
         </div>
     </div>
@@ -244,27 +324,57 @@
                         faceRegisteredBadge.textContent = 'Registered';
                         faceRegisteredBadge.className = 'status-badge status-active';
                         document.getElementById('registerFaceBtn').style.display = 'none';
+                        // Load face image
+                        loadFaceImage(user.email);
                     } else {
                         faceRegisteredBadge.textContent = 'Not Registered';
                         faceRegisteredBadge.className = 'status-badge status-pending';
                         document.getElementById('registerFaceBtn').style.display = 'inline-block';
+                        document.getElementById('faceImageRow').style.display = 'none';
                     }
                     
                     const faceLoginBadge = document.getElementById('faceLoginStatus');
+                    const disableBtn = document.getElementById('disableFaceLoginBtn');
+                    const enableBtn = document.getElementById('enableFaceLoginBtn');
+                    
                     if (user.face_login_disabled) {
                         faceLoginBadge.textContent = 'Disabled';
                         faceLoginBadge.className = 'status-badge status-disabled';
                         document.getElementById('failureCountRow').style.display = 'flex';
                         document.getElementById('failureCount').textContent = `${user.face_login_failures} / 5 (Face login disabled)`;
+                        // Show enable button if face is registered
+                        if (user.face_registered) {
+                            enableBtn.style.display = 'inline-block';
+                            disableBtn.style.display = 'none';
+                        } else {
+                            enableBtn.style.display = 'none';
+                            disableBtn.style.display = 'none';
+                        }
                     } else if (user.face_login_failures > 0) {
                         faceLoginBadge.textContent = 'Active (Some Failures)';
                         faceLoginBadge.className = 'status-badge status-active';
                         document.getElementById('failureCountRow').style.display = 'flex';
                         document.getElementById('failureCount').textContent = `${user.face_login_failures} / 5`;
+                        // Show disable button if face is registered
+                        if (user.face_registered) {
+                            disableBtn.style.display = 'inline-block';
+                            enableBtn.style.display = 'none';
+                        } else {
+                            disableBtn.style.display = 'none';
+                            enableBtn.style.display = 'none';
+                        }
                     } else {
                         faceLoginBadge.textContent = 'Active';
                         faceLoginBadge.className = 'status-badge status-active';
                         document.getElementById('failureCountRow').style.display = 'none';
+                        // Show disable button if face is registered
+                        if (user.face_registered) {
+                            disableBtn.style.display = 'inline-block';
+                            enableBtn.style.display = 'none';
+                        } else {
+                            disableBtn.style.display = 'none';
+                            enableBtn.style.display = 'none';
+                        }
                     }
                     
                     loadingDiv.style.display = 'none';
@@ -288,6 +398,123 @@
             sessionStorage.removeItem('userName');
             sessionStorage.removeItem('userId');
             window.location.href = 'login.html';
+        }
+
+        async function disableFaceLogin() {
+            if (!confirm('Are you sure you want to disable face login? You can re-enable it anytime from your profile.')) {
+                return;
+            }
+
+            const userEmail = sessionStorage.getItem('userEmail');
+            if (!userEmail) {
+                alert('Session expired. Please login again.');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/face-login/disable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: userEmail })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(result.message || 'Face login has been disabled.');
+                    // Reload profile
+                    loadProfile(userEmail);
+                } else {
+                    alert('Failed to disable face login: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error connecting to server.');
+                console.error(error);
+            }
+        }
+
+        function showEnableModal() {
+            document.getElementById('enableModal').style.display = 'block';
+            document.getElementById('enablePassword').value = '';
+            document.getElementById('enableError').style.display = 'none';
+        }
+
+        function closeEnableModal() {
+            document.getElementById('enableModal').style.display = 'none';
+            document.getElementById('enablePassword').value = '';
+            document.getElementById('enableError').style.display = 'none';
+        }
+
+        async function enableFaceLogin() {
+            const userEmail = sessionStorage.getItem('userEmail');
+            const password = document.getElementById('enablePassword').value;
+
+            if (!userEmail) {
+                alert('Session expired. Please login again.');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            if (!password) {
+                document.getElementById('enableError').textContent = 'Password is required';
+                document.getElementById('enableError').style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/face-login/enable`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: userEmail, password: password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(result.message || 'Face login has been re-enabled.');
+                    closeEnableModal();
+                    // Reload profile
+                    loadProfile(userEmail);
+                } else {
+                    document.getElementById('enableError').textContent = result.error || 'Failed to enable face login';
+                    document.getElementById('enableError').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('enableError').textContent = 'Error connecting to server.';
+                document.getElementById('enableError').style.display = 'block';
+                console.error(error);
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('enableModal');
+            if (event.target == modal) {
+                closeEnableModal();
+            }
+        }
+
+        async function loadFaceImage(email) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/face-image?email=${encodeURIComponent(email)}`);
+                const result = await response.json();
+                
+                const facePreview = document.getElementById('facePreview');
+                const faceImageRow = document.getElementById('faceImageRow');
+                
+                if (result.success && result.image) {
+                    // Display the image
+                    facePreview.innerHTML = `<img src="${result.image}" alt="Registered Face" style="width: 100%; height: 100%; object-fit: cover;" />`;
+                    faceImageRow.style.display = 'flex';
+                } else {
+                    // No image found or error
+                    faceImageRow.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error loading face image:', error);
+                document.getElementById('faceImageRow').style.display = 'none';
+            }
         }
     </script>
 </body>

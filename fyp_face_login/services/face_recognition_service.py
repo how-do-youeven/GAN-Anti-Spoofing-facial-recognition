@@ -112,8 +112,8 @@ class FaceRecognitionService:
                         # Face registered to another account
                         return False, "This face is already registered to another account", best_distance
         
-        # Register the face
-        face_encoding = FaceEncoding(user_id=user_id, encoding=embedding)
+        # Register the face (store image for later viewing)
+        face_encoding = FaceEncoding(user_id=user_id, encoding=embedding, image_b64=image_b64)
         self.face_repo.save(face_encoding)
         
         # Update user's face_registered status
@@ -238,4 +238,14 @@ class FaceRecognitionService:
         success, error_msg, _ = self.register_face(image_b64, user_id, check_duplicates=False)
         
         return success, error_msg
+    
+    def get_face_image(self, user_id: str) -> Optional[str]:
+        """
+        Get the registered face image for a user
+        Returns: base64 image string or None if not found
+        """
+        face_encoding = self.face_repo.find_by_user_id(user_id)
+        if face_encoding and face_encoding.image_b64:
+            return face_encoding.image_b64
+        return None
 

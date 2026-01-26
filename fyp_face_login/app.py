@@ -289,6 +289,68 @@ def get_user_profile():
         }
     }), 200
 
+@app.route("/api/user/face-login/disable", methods=["POST"])
+def disable_face_login():
+    """Disable face login for the current user"""
+    data = request.get_json(force=True)
+    email = data.get("email", "").strip().lower()
+    
+    if not email:
+        return jsonify({"success": False, "error": "Email required"}), 400
+    
+    success, error = user_service.disable_face_login(email)
+    
+    if not success:
+        return jsonify({"success": False, "error": error}), 400
+    
+    return jsonify({
+        "success": True,
+        "message": "Face login has been disabled. You can re-enable it anytime from your profile."
+    }), 200
+
+@app.route("/api/user/face-login/enable", methods=["POST"])
+def enable_face_login():
+    """Re-enable face login for the current user (requires password)"""
+    data = request.get_json(force=True)
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    
+    if not email or not password:
+        return jsonify({"success": False, "error": "Email and password required"}), 400
+    
+    success, error = user_service.enable_face_login(email, password)
+    
+    if not success:
+        return jsonify({"success": False, "error": error}), 400
+    
+    return jsonify({
+        "success": True,
+        "message": "Face login has been re-enabled. Failure count has been reset."
+    }), 200
+
+@app.route("/api/user/face-image", methods=["GET"])
+def get_face_image():
+    """Get the registered face image for a user"""
+    email = request.args.get("email", "").strip().lower()
+    
+    if not email:
+        return jsonify({"success": False, "error": "Email required"}), 400
+    
+    user = user_service.get_user_info(email)
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+    
+    # Get face image
+    face_image = face_service.get_face_image(user.user_id)
+    
+    if not face_image:
+        return jsonify({"success": False, "error": "No face image found. Please register your face first."}), 404
+    
+    return jsonify({
+        "success": True,
+        "image": face_image
+    }), 200
+
 # ========== Feedback Routes ==========
 
 @app.route("/api/feedback", methods=["POST"])

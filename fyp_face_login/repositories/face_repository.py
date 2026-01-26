@@ -24,8 +24,9 @@ class FaceRepository:
             raw_data = json.load(f)
         
         encodings = {}
-        for user_id, encoding_list in raw_data.items():
-            encodings[user_id] = FaceEncoding.from_dict(user_id, encoding_list)
+        for user_id, data in raw_data.items():
+            # Handle both old format (list) and new format (dict)
+            encodings[user_id] = FaceEncoding.from_dict(user_id, data)
         
         return encodings
     
@@ -33,7 +34,7 @@ class FaceRepository:
         """Save all face encodings to storage"""
         serializable = {}
         for user_id, encoding in encodings.items():
-            serializable[user_id] = encoding.encoding.tolist()
+            serializable[user_id] = encoding.to_dict()
         
         with open(self.db_path, "w") as f:
             json.dump(serializable, f)
