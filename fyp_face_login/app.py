@@ -35,6 +35,7 @@ from flask_cors import CORS
 from repositories.user_repository import UserRepository
 from repositories.face_repository import FaceRepository
 from repositories.admin_repository import AdminRepository
+from repositories.feedback_repository import FeedbackRepository
 
 # Import services
 from services.user_service import UserService
@@ -57,23 +58,30 @@ face_repo = FaceRepository("known_faces.json")
 admin_repo = AdminRepository("admin_config.json", 
                              default_email="admin@school.edu",
                              default_password_hash=None)
+feedback_repo = FeedbackRepository("feedback.json")
 
 # Initialize services
 user_service = UserService(user_repo, face_repo)
 face_service = FaceRecognitionService(face_repo, user_repo)
-admin_service = AdminService(admin_repo, user_repo, face_repo, user_service)
+admin_service = AdminService(admin_repo, user_repo, face_repo, user_service, feedback_repo)
 
 # Initialize controllers
 auth_controller = AuthController(user_service, face_service)
 registration_controller = RegistrationController(user_service, face_service)
 admin_controller = AdminController(admin_service)
 
-# Initialize default admin if needed
+# Initialize default admins if needed
 if not os.path.exists("admin_config.json"):
     from entities.admin import Admin
     admin_password_hash = UserService.hash_password("admin123")
-    default_admin = Admin("admin@school.edu", admin_password_hash)
-    admin_repo.save(default_admin)
+    
+    # Create system admin
+    system_admin = Admin("system@school.edu", admin_password_hash, Admin.SYSTEM_ADMIN)
+    admin_repo.save(system_admin)
+    
+    # Create operations admin
+    operations_admin = Admin("operations@school.edu", admin_password_hash, Admin.OPERATIONS_ADMIN)
+    admin_repo.save(operations_admin)
 
 # ========== API Routes ==========
 
@@ -226,6 +234,111 @@ def reset_user_password(email):
     new_password = data.get("new_password", "")
 
     result = admin_controller.reset_user_password(email, new_password)
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+@app.route("/api/admin/registrations/pending", methods=["GET"])
+def get_pending_registrations():
+    """Get all pending user registrations (system admin only)"""
+    result = admin_controller.get_pending_registrations()
+    return jsonify(result), 200
+
+@app.route("/api/admin/registrations/<email>/approve", methods=["POST"])
+def approve_registration(email):
+    """Approve a user registration (system admin only)"""
+    result = admin_controller.approve_registration(email)
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+@app.route("/api/admin/registrations/<email>/reject", methods=["POST"])
+def reject_registration(email):
+    """Reject a user registration (system admin only)"""
+    result = admin_controller.reject_registration(email)
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+# ========== User Profile Routes ==========
+
+@app.route("/api/user/profile", methods=["GET"])
+def get_user_profile():
+    """Get user profile information"""
+    # Get email from query parameter or session (simplified for now)
+    email = request.args.get("email", "").strip().lower()
+    
+    if not email:
+        return jsonify({"success": False, "error": "Email required"}), 400
+    
+    user = user_service.get_user_info(email)
+    
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+    
+    # Get face registration status
+    face_registered = face_repo.exists(user.user_id)
+    
+    return jsonify({
+        "success": True,
+        "user": {
+            "email": user.email,
+            "user_id": user.user_id,
+            "name": user.name,
+            "face_registered": face_registered,
+            "created": user.created,
+            "face_login_disabled": user.face_login_disabled,
+            "face_login_failures": user.face_login_failures
+        }
+    }), 200
+
+# ========== Feedback Routes ==========
+
+@app.route("/api/feedback", methods=["POST"])
+def submit_feedback():
+    """Submit user feedback"""
+    import uuid
+    from entities.feedback import Feedback
+    
+    data = request.get_json(force=True)
+    user_email = data.get("email", "").strip().lower()
+    message = data.get("message", "").strip()
+    
+    if not user_email or not message:
+        return jsonify({"success": False, "error": "Email and message required"}), 400
+    
+    if len(message) < 10:
+        return jsonify({"success": False, "error": "Message must be at least 10 characters"}), 400
+    
+    # Create feedback
+    feedback_id = f"fb_{uuid.uuid4().hex[:8]}"
+    feedback = Feedback(
+        feedback_id=feedback_id,
+        user_email=user_email,
+        message=message
+    )
+    
+    feedback_repo.save(feedback)
+    
+    return jsonify({
+        "success": True,
+        "message": "Feedback submitted successfully. Operations admin will review it."
+    }), 200
+
+@app.route("/api/admin/feedback", methods=["GET"])
+def get_all_feedback():
+    """Get all user feedback (operations admin only)"""
+    status_filter = request.args.get("status", None)
+    result = admin_controller.get_all_feedback(status_filter=status_filter)
+    return jsonify(result), 200
+
+@app.route("/api/admin/feedback/<feedback_id>/status", methods=["POST"])
+def update_feedback_status(feedback_id):
+    """Update feedback status (operations admin only)"""
+    data = request.get_json(force=True)
+    new_status = data.get("status", "").strip()
+    
+    if not new_status:
+        return jsonify({"success": False, "error": "Status is required"}), 400
+    
+    result = admin_controller.update_feedback_status(feedback_id, new_status)
     status_code = 200 if result.get("success") else 400
     return jsonify(result), status_code
 

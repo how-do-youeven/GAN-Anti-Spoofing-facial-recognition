@@ -22,7 +22,7 @@ System compares scanned face against all registered faces:
 **If Only One Face Registered:**
 - Calculates distance to the single registered face
 - **Requires:**
-  - Distance ≤ 0.25 (SINGLE_FACE_THRESHOLD - even stricter!)
+  - Distance ≤ 0.25 (SINGLE_FACE_THRESHOLD - )
   - This prevents false matches when only one face exists
 
 ### Step 3: Decision

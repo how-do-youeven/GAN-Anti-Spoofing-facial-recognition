@@ -31,7 +31,8 @@ class RegistrationController:
             "success": True,
             "user_id": user.user_id,
             "email": user.email,
-            "message": "Account created successfully"
+            "message": "Account created successfully. Your registration is pending admin approval. You will be able to login and register your face once approved.",
+            "registration_status": user.registration_status
         }
     
     def register_face(self, image_b64: str, email: str, password: str) -> Dict[str, Any]:
@@ -40,12 +41,33 @@ class RegistrationController:
         Returns response dictionary
         """
         # Verify account credentials first
-        success, user, error = self.user_service.login(email, password)
+        email_lower = email.strip().lower()
+        user = self.user_service.user_repo.find_by_email(email_lower)
         
-        if not success:
+        if not user:
             return {
                 "success": False,
-                "error": error
+                "error": "User not found"
+            }
+        
+        # Check if user is approved
+        if not user.is_approved():
+            if user.is_pending():
+                return {
+                    "success": False,
+                    "error": "Your registration is pending approval. Please wait for admin approval before registering your face."
+                }
+            elif user.is_rejected():
+                return {
+                    "success": False,
+                    "error": "Your registration has been rejected. Please contact support."
+                }
+        
+        # Verify password
+        if not self.user_service.verify_password(password, user.password_hash):
+            return {
+                "success": False,
+                "error": "Invalid password"
             }
         
         # Register face
@@ -89,8 +111,13 @@ class RegistrationController:
                 "error": error_msg
             }
         
+        # Reset failure count and re-enable face login
+        user.face_login_failures = 0
+        user.face_login_disabled = False
+        self.user_service.user_repo.save(user)
+        
         return {
             "success": True,
-            "message": "Facial recognition reset successfully"
+            "message": "Facial recognition reset successfully. Face login has been re-enabled."
         }
 

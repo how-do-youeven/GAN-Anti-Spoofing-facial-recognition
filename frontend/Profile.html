@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Profile - Student Portal</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #e8f0ff, #ffffff);
+            color: #333;
+        }
+        header {
+            background: #0059b3;
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .profile-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .profile-card h2 {
+            color: #0059b3;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+        .info-row {
+            display: flex;
+            padding: 15px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #666;
+            width: 200px;
+            flex-shrink: 0;
+        }
+        .info-value {
+            color: #333;
+            flex: 1;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active {
+            background: #28a745;
+            color: white;
+        }
+        .status-disabled {
+            background: #dc3545;
+            color: white;
+        }
+        .status-pending {
+            background: #ffc107;
+            color: #333;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        .btn-primary {
+            background: #0078ff;
+            color: white;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .face-preview {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px 0;
+            border: 3px solid #0078ff;
+            overflow: hidden;
+        }
+        .face-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .face-preview-placeholder {
+            color: #999;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <header>Student Portal - My Profile</header>
+
+    <div class="container">
+        <div id="loadingMessage" class="loading">Loading profile...</div>
+        <div id="errorMessage" class="error" style="display: none;"></div>
+        
+        <div id="profileContent" style="display: none;">
+            <div class="profile-card">
+                <h2>Account Details</h2>
+                
+                <div class="info-row">
+                    <div class="info-label">Username / Name:</div>
+                    <div class="info-value" id="userName">-</div>
+                </div>
+                
+                <div class="info-row">
+                    <div class="info-label">Email:</div>
+                    <div class="info-value" id="userEmail">-</div>
+                </div>
+                
+                <div class="info-row">
+                    <div class="info-label">User ID:</div>
+                    <div class="info-value" id="userId">-</div>
+                </div>
+                
+                <div class="info-row">
+                    <div class="info-label">Account Created:</div>
+                    <div class="info-value" id="accountCreated">-</div>
+                </div>
+            </div>
+
+            <div class="profile-card">
+                <h2>Facial Recognition</h2>
+                
+                <div class="info-row">
+                    <div class="info-label">Face Registered:</div>
+                    <div class="info-value">
+                        <span id="faceRegisteredStatus" class="status-badge">-</span>
+                    </div>
+                </div>
+                
+                <div class="info-row">
+                    <div class="info-label">Face Login Status:</div>
+                    <div class="info-value">
+                        <span id="faceLoginStatus" class="status-badge">-</span>
+                    </div>
+                </div>
+                
+                <div class="info-row" id="failureCountRow" style="display: none;">
+                    <div class="info-label">Failed Login Attempts:</div>
+                    <div class="info-value" id="failureCount">-</div>
+                </div>
+                
+                <div style="margin-top: 20px;">
+                    <a href="ResetFacialRecognition.html" class="btn btn-primary">Reset Facial Recognition</a>
+                    <a href="RegisterFace.html" class="btn btn-secondary" id="registerFaceBtn" style="display: none;">Register Face</a>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <a href="home page.html" class="btn btn-secondary">Back to Home</a>
+                <button onclick="logout()" class="btn btn-danger">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = "http://localhost:8000";
+
+        // Check if user is logged in
+        window.onload = function() {
+            const loggedIn = sessionStorage.getItem('loggedIn');
+            const userEmail = sessionStorage.getItem('userEmail');
+            
+            if (loggedIn !== 'true' || !userEmail) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            loadProfile(userEmail);
+        };
+
+        async function loadProfile(email) {
+            const loadingDiv = document.getElementById('loadingMessage');
+            const errorDiv = document.getElementById('errorMessage');
+            const contentDiv = document.getElementById('profileContent');
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/user/profile?email=${encodeURIComponent(email)}`);
+                const result = await response.json();
+                
+                if (result.success && result.user) {
+                    const user = result.user;
+                    
+                    // Populate account details
+                    document.getElementById('userName').textContent = user.name || user.email;
+                    document.getElementById('userEmail').textContent = user.email;
+                    document.getElementById('userId').textContent = user.user_id;
+                    document.getElementById('accountCreated').textContent = user.created || 'Unknown';
+                    
+                    // Populate facial recognition info
+                    const faceRegisteredBadge = document.getElementById('faceRegisteredStatus');
+                    if (user.face_registered) {
+                        faceRegisteredBadge.textContent = 'Registered';
+                        faceRegisteredBadge.className = 'status-badge status-active';
+                        document.getElementById('registerFaceBtn').style.display = 'none';
+                    } else {
+                        faceRegisteredBadge.textContent = 'Not Registered';
+                        faceRegisteredBadge.className = 'status-badge status-pending';
+                        document.getElementById('registerFaceBtn').style.display = 'inline-block';
+                    }
+                    
+                    const faceLoginBadge = document.getElementById('faceLoginStatus');
+                    if (user.face_login_disabled) {
+                        faceLoginBadge.textContent = 'Disabled';
+                        faceLoginBadge.className = 'status-badge status-disabled';
+                        document.getElementById('failureCountRow').style.display = 'flex';
+                        document.getElementById('failureCount').textContent = `${user.face_login_failures} / 5 (Face login disabled)`;
+                    } else if (user.face_login_failures > 0) {
+                        faceLoginBadge.textContent = 'Active (Some Failures)';
+                        faceLoginBadge.className = 'status-badge status-active';
+                        document.getElementById('failureCountRow').style.display = 'flex';
+                        document.getElementById('failureCount').textContent = `${user.face_login_failures} / 5`;
+                    } else {
+                        faceLoginBadge.textContent = 'Active';
+                        faceLoginBadge.className = 'status-badge status-active';
+                        document.getElementById('failureCountRow').style.display = 'none';
+                    }
+                    
+                    loadingDiv.style.display = 'none';
+                    contentDiv.style.display = 'block';
+                } else {
+                    loadingDiv.style.display = 'none';
+                    errorDiv.textContent = result.error || 'Failed to load profile';
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                errorDiv.textContent = 'Error connecting to server. Make sure the backend is running.';
+                errorDiv.style.display = 'block';
+                console.error(error);
+            }
+        }
+
+        function logout() {
+            sessionStorage.removeItem('loggedIn');
+            sessionStorage.removeItem('userEmail');
+            sessionStorage.removeItem('userName');
+            sessionStorage.removeItem('userId');
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+</html>

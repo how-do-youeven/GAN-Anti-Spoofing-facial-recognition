@@ -64,6 +64,16 @@
             <p style="margin: 5px 0;">Having trouble with facial recognition?</p>
             <a href="ResetFacialRecognition.html" style="color: #0078ff; text-decoration: none;">Reset Your Facial Recognition Data</a>
         </div>
+
+        <!-- Feedback Form -->
+        <div id="feedbackSection" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+            <h3 style="font-size: 16px; margin-bottom: 10px; color: #333;">Submit Feedback</h3>
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Have a suggestion or issue? Let the operations admin know.</p>
+            <input type="email" id="feedbackEmail" placeholder="Your email" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; box-sizing: border-box;">
+            <textarea id="feedbackMessage" placeholder="Your feedback or issue..." style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; min-height: 80px; resize: vertical; box-sizing: border-box;"></textarea>
+            <button id="submitFeedbackBtn" class="btn btn-secondary" style="background: #28a745; color: white;">Submit Feedback</button>
+            <div id="feedbackStatus" style="margin-top: 8px; font-size: 12px; min-height: 16px;"></div>
+        </div>
     </div>
 
     <script>
@@ -141,14 +151,36 @@
                     sessionStorage.setItem('userName', result.name || '');
                     sessionStorage.setItem('userId', result.user_id);
 
-                    setTimeout(() => {
-                        window.location.href = 'home page.html';
-                    }, 1500);
+                    // Reset scanning flag
+                    isScanning = false;
+                    scanBtn.disabled = false;
+                    scanBtn.textContent = 'Scan Face to Login';
+
+                    // Stop camera before redirect
+                    stopCamera();
+
+                    // Redirect to home page immediately
+                    window.location.href = 'home page.html';
                 } else {
                     statusMsg.textContent = result.error || 'Face not recognized. Please try again.';
                     statusMsg.style.color = '#d32f2f';
-                    scanBtn.disabled = false;
-                    scanBtn.textContent = 'Scan Face to Login';
+                    
+                    // Check if face login is disabled
+                    if (result.face_login_disabled) {
+                        scanBtn.disabled = true;
+                        scanBtn.textContent = 'Face Login Disabled';
+                        scanBtn.style.background = '#dc3545';
+                        statusMsg.textContent = result.error + ' Please use password login and reset your facial recognition.';
+                        statusMsg.style.color = '#d32f2f';
+                    } else {
+                        scanBtn.disabled = false;
+                        scanBtn.textContent = 'Scan Face to Login';
+                        
+                        // Show remaining attempts if available
+                        if (result.failures_remaining !== undefined) {
+                            statusMsg.textContent += ` (${result.failures_remaining} attempts remaining)`;
+                        }
+                    }
                     isScanning = false;
                 }
             } catch (error) {
@@ -162,6 +194,57 @@
         }
 
         document.getElementById('scanBtn').addEventListener('click', scanFace);
+
+        // Feedback submission
+        document.getElementById('submitFeedbackBtn').addEventListener('click', async function() {
+            const email = document.getElementById('feedbackEmail').value.trim();
+            const message = document.getElementById('feedbackMessage').value.trim();
+            const statusDiv = document.getElementById('feedbackStatus');
+            const submitBtn = document.getElementById('submitFeedbackBtn');
+            
+            if (!email || !message) {
+                statusDiv.textContent = 'Please fill in both email and message.';
+                statusDiv.style.color = '#d32f2f';
+                return;
+            }
+            
+            if (message.length < 10) {
+                statusDiv.textContent = 'Message must be at least 10 characters.';
+                statusDiv.style.color = '#d32f2f';
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            statusDiv.textContent = '';
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/feedback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, message: message })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusDiv.textContent = result.message || 'Feedback submitted successfully!';
+                    statusDiv.style.color = '#28a745';
+                    document.getElementById('feedbackEmail').value = '';
+                    document.getElementById('feedbackMessage').value = '';
+                } else {
+                    statusDiv.textContent = result.error || 'Failed to submit feedback.';
+                    statusDiv.style.color = '#d32f2f';
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Error connecting to server.';
+                statusDiv.style.color = '#d32f2f';
+                console.error(error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Feedback';
+            }
+        });
 
         window.onload = startCamera;
         window.addEventListener('beforeunload', stopCamera);

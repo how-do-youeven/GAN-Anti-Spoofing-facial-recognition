@@ -222,7 +222,7 @@
 </head>
 <body>
     <header>
-        <h1>🔐 Administrator Dashboard</h1>
+        <h1>🔐 Administrator Dashboard <span id="adminTypeBadge" style="font-size: 14px; margin-left: 10px; opacity: 0.9;"></span></h1>
         <div class="header-actions">
             <button class="btn btn-primary" onclick="refreshUsers()">🔄 Refresh</button>
             <button class="btn btn-secondary" onclick="logout()">Logout</button>
@@ -243,6 +243,69 @@
                 <h3>Traditional Login Only</h3>
                 <div class="value" id="withoutFace">0</div>
             </div>
+            <div class="stat-card" id="pendingRegistrationsCard" style="display: none;">
+                <h3>Pending Registrations</h3>
+                <div class="value" id="pendingRegistrations">0</div>
+            </div>
+            <div class="stat-card" id="feedbackCard" style="display: none;">
+                <h3>Total Feedback</h3>
+                <div class="value" id="totalFeedback">0</div>
+            </div>
+        </div>
+
+        <!-- Feedback Section (Operations Admin Only) -->
+        <div id="feedbackSection" class="users-table-container" style="display: none; margin-bottom: 30px;">
+            <div class="table-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Student Feedback</h2>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <label for="statusFilter" style="font-size: 14px; color: #666;">Filter by Status:</label>
+                    <select id="statusFilter" onchange="filterFeedbackByStatus()" style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="no_action_taken">No Action Taken</option>
+                    </select>
+                </div>
+            </div>
+            <div id="feedbackLoadingMessage" class="loading">Loading feedback...</div>
+            <div id="feedbackErrorMessage" style="display: none;"></div>
+            <table id="feedbackTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Feedback ID</th>
+                        <th>Student Email</th>
+                        <th>Message</th>
+                        <th>Submitted</th>
+                        <th>Status</th>
+                        <th>Change Status</th>
+                    </tr>
+                </thead>
+                <tbody id="feedbackTableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pending Registrations Section (System Admin Only) -->
+        <div id="pendingRegistrationsSection" class="users-table-container" style="display: none; margin-bottom: 30px;">
+            <div class="table-header">
+                <h2>Pending Registrations (Requires Approval)</h2>
+            </div>
+            <div id="pendingLoadingMessage" class="loading">Loading pending registrations...</div>
+            <div id="pendingErrorMessage" style="display: none;"></div>
+            <table id="pendingTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th>User ID</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="pendingTableBody">
+                </tbody>
+            </table>
         </div>
 
         <div class="users-table-container">
@@ -306,12 +369,27 @@
     <script>
         const BACKEND_URL = "http://localhost:8000";
         let usersData = [];
+        let pendingRegistrations = [];
         let userToDelete = null;
         let userToResetPassword = null;
+        let adminType = sessionStorage.getItem('adminType') || 'system_admin';
 
         // Check if admin is logged in
         if (sessionStorage.getItem('adminLoggedIn') !== 'true') {
             window.location.href = 'AdminLogin.html';
+        }
+
+        // Show/hide sections based on admin type
+        const adminTypeBadge = document.getElementById('adminTypeBadge');
+        if (adminType === 'system_admin') {
+            adminTypeBadge.textContent = '[System Admin]';
+            document.getElementById('pendingRegistrationsCard').style.display = 'block';
+            document.getElementById('pendingRegistrationsSection').style.display = 'block';
+        } else if (adminType === 'operations_admin') {
+            adminTypeBadge.textContent = '[Operations Admin]';
+            document.getElementById('feedbackCard').style.display = 'block';
+            document.getElementById('feedbackSection').style.display = 'block';
+            loadFeedback();
         }
 
         async function loadUsers() {
@@ -324,7 +402,8 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    usersData = result.users;
+                    // Filter out pending users from main list (only show approved)
+                    usersData = result.users.filter(user => user.registration_status === 'approved' || !user.registration_status);
                     displayUsers(usersData);
                     updateStats(usersData);
                 } else {
@@ -333,6 +412,223 @@
             } catch (error) {
                 showError('Error connecting to server. Make sure the backend is running.');
                 console.error(error);
+            }
+
+            // Load pending registrations if system admin
+            if (adminType === 'system_admin') {
+                loadPendingRegistrations();
+            }
+        }
+
+        async function loadPendingRegistrations() {
+            document.getElementById('pendingLoadingMessage').style.display = 'block';
+            document.getElementById('pendingTable').style.display = 'none';
+            document.getElementById('pendingErrorMessage').style.display = 'none';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/admin/registrations/pending`);
+                const result = await response.json();
+
+                if (result.success) {
+                    pendingRegistrations = result.pending_users;
+                    displayPendingRegistrations(pendingRegistrations);
+                    document.getElementById('pendingRegistrations').textContent = result.total;
+                } else {
+                    document.getElementById('pendingErrorMessage').textContent = 'Failed to load pending registrations: ' + (result.error || 'Unknown error');
+                    document.getElementById('pendingErrorMessage').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('pendingErrorMessage').textContent = 'Error connecting to server.';
+                document.getElementById('pendingErrorMessage').style.display = 'block';
+                console.error(error);
+            }
+        }
+
+        function displayPendingRegistrations(pendingUsers) {
+            const tbody = document.getElementById('pendingTableBody');
+            tbody.innerHTML = '';
+
+            if (pendingUsers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #666;">No pending registrations</td></tr>';
+            } else {
+                pendingUsers.forEach(user => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${user.email}</td>
+                        <td>${user.name || 'N/A'}</td>
+                        <td><code style="font-size: 12px;">${user.user_id}</code></td>
+                        <td style="font-size: 12px; color: #666;">${user.created || 'Unknown'}</td>
+                        <td>
+                            <div class="actions">
+                                <button class="btn btn-primary btn-small" onclick="approveRegistration('${user.email}')" style="background: #28a745;">
+                                    ✓ Approve
+                                </button>
+                                <button class="btn btn-danger btn-small" onclick="rejectRegistration('${user.email}')">
+                                    ✗ Reject
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            document.getElementById('pendingLoadingMessage').style.display = 'none';
+            document.getElementById('pendingTable').style.display = 'table';
+        }
+
+        async function approveRegistration(email) {
+            if (!confirm(`Approve registration for ${email}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/admin/registrations/${encodeURIComponent(email)}/approve`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Registration approved successfully!');
+                    loadPendingRegistrations();
+                    loadUsers(); // Refresh main user list
+                } else {
+                    alert('Failed to approve: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error connecting to server.');
+                console.error(error);
+            }
+        }
+
+        async function rejectRegistration(email) {
+            if (!confirm(`Reject registration for ${email}? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/admin/registrations/${encodeURIComponent(email)}/reject`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Registration rejected.');
+                    loadPendingRegistrations();
+                } else {
+                    alert('Failed to reject: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error connecting to server.');
+                console.error(error);
+            }
+        }
+
+        async function loadFeedback() {
+            document.getElementById('feedbackLoadingMessage').style.display = 'block';
+            document.getElementById('feedbackTable').style.display = 'none';
+            document.getElementById('feedbackErrorMessage').style.display = 'none';
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/admin/feedback`);
+                const result = await response.json();
+
+                if (result.success) {
+                    displayFeedback(result.feedback);
+                    document.getElementById('totalFeedback').textContent = result.total;
+                } else {
+                    document.getElementById('feedbackErrorMessage').textContent = 'Failed to load feedback: ' + (result.error || 'Unknown error');
+                    document.getElementById('feedbackErrorMessage').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('feedbackErrorMessage').textContent = 'Error connecting to server.';
+                document.getElementById('feedbackErrorMessage').style.display = 'block';
+                console.error(error);
+            }
+        }
+
+        function displayFeedback(feedbackList) {
+            const tbody = document.getElementById('feedbackTableBody');
+            tbody.innerHTML = '';
+
+            if (feedbackList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #666;">No feedback found</td></tr>';
+            } else {
+                feedbackList.forEach(feedback => {
+                    const row = document.createElement('tr');
+                    const status = feedback.status || 'pending';
+                    let statusClass = 'badge-secondary';
+                    let statusLabel = status;
+                    
+                    if (status === 'pending') {
+                        statusClass = 'badge-warning';
+                        statusLabel = 'Pending';
+                    } else if (status === 'in_progress') {
+                        statusClass = 'badge-info';
+                        statusLabel = 'In Progress';
+                    } else if (status === 'completed') {
+                        statusClass = 'badge-success';
+                        statusLabel = 'Completed';
+                    } else if (status === 'no_action_taken') {
+                        statusClass = 'badge-danger';
+                        statusLabel = 'No Action Taken';
+                    }
+                    
+                    row.innerHTML = `
+                        <td><code style="font-size: 11px;">${feedback.feedback_id}</code></td>
+                        <td>${feedback.user_email}</td>
+                        <td style="max-width: 300px; word-wrap: break-word;">${feedback.message}</td>
+                        <td style="font-size: 12px; color: #666;">${feedback.created || 'Unknown'}</td>
+                        <td>
+                            <span class="badge ${statusClass}">
+                                ${statusLabel}
+                            </span>
+                        </td>
+                        <td>
+                            <select onchange="updateFeedbackStatus('${feedback.feedback_id}', this.value)" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="pending" ${status === 'pending' ? 'selected' : ''}>Pending</option>
+                                <option value="in_progress" ${status === 'in_progress' ? 'selected' : ''}>In Progress</option>
+                                <option value="completed" ${status === 'completed' ? 'selected' : ''}>Completed</option>
+                                <option value="no_action_taken" ${status === 'no_action_taken' ? 'selected' : ''}>No Action Taken</option>
+                            </select>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+
+            document.getElementById('feedbackLoadingMessage').style.display = 'none';
+            document.getElementById('feedbackTable').style.display = 'table';
+        }
+
+        async function updateFeedbackStatus(feedbackId, newStatus) {
+            if (!confirm(`Change feedback status to "${newStatus.replace('_', ' ')}"?`)) {
+                // Reset dropdown to original value if cancelled
+                loadFeedback(document.getElementById('statusFilter').value || null);
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/admin/feedback/${feedbackId}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    // Reload feedback with current filter
+                    loadFeedback(document.getElementById('statusFilter').value || null);
+                } else {
+                    alert('Failed to update status: ' + (result.error || 'Unknown error'));
+                    // Reset dropdown
+                    loadFeedback(document.getElementById('statusFilter').value || null);
+                }
+            } catch (error) {
+                alert('Error connecting to server.');
+                console.error(error);
+                // Reset dropdown
+                loadFeedback(document.getElementById('statusFilter').value || null);
             }
         }
 
@@ -393,11 +689,15 @@
 
         function refreshUsers() {
             loadUsers();
+            if (adminType === 'operations_admin') {
+                loadFeedback();
+            }
         }
 
         function logout() {
             sessionStorage.removeItem('adminLoggedIn');
             sessionStorage.removeItem('adminEmail');
+            sessionStorage.removeItem('adminType');
             window.location.href = 'AdminLogin.html';
         }
 

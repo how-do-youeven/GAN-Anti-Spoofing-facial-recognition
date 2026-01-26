@@ -171,6 +171,7 @@
                     // Store admin session
                     sessionStorage.setItem('adminLoggedIn', 'true');
                     sessionStorage.setItem('adminEmail', email);
+                    sessionStorage.setItem('adminType', result.admin_type || 'system_admin');
                     
                     // Redirect to admin dashboard
                     window.location.href = 'AdminDashboard.html';

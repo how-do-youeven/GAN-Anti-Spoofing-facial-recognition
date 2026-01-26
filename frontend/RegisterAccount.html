@@ -191,16 +191,23 @@
         <div id="choiceScreen" class="choice-screen">
             <div class="success-icon">✓</div>
             <h2 style="color: #28a745; margin-bottom: 10px;">Account Created Successfully!</h2>
-            <p class="subtitle">Your student account has been created. Would you like to set up facial recognition login now? This will allow you to quickly access your account using your face instead of typing your password.</p>
-            
-            <div class="choice-buttons">
-                <button class="btn btn-primary" id="registerFaceBtn">Yes, Set Up Facial Recognition</button>
-                <button class="btn btn-secondary" id="skipFaceBtn">Skip for Now</button>
-            </div>
-
-            <p style="margin-top: 20px; font-size: 12px; color: #999;">
-                You can always set up facial recognition later from the login page. For now, you can login using your email and password.
+            <p class="subtitle" style="color: #ffc107; font-weight: bold; margin-bottom: 15px;">
+                ⚠️ Your registration is pending admin approval.
             </p>
+            <p class="subtitle">
+                Your account has been created and submitted for review. A system administrator will review your registration and approve it. Once approved, you will be able to:
+            </p>
+            <ul style="text-align: left; max-width: 500px; margin: 20px auto; color: #666;">
+                <li>Login to your account using email and password</li>
+                <li>Register your face for facial recognition login</li>
+                <li>Access all student portal features</li>
+            </ul>
+            <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                Please wait for admin approval. You will not be able to login or register your face until your account is approved.
+            </p>
+            <div style="margin-top: 30px;">
+                <a href="login.html" class="btn btn-primary">Back to Login</a>
+            </div>
         </div>
     </div>
 
@@ -210,6 +217,23 @@
         const errorMessage = document.getElementById('errorMessage');
         const successMessage = document.getElementById('successMessage');
         const submitBtn = document.getElementById('submitBtn');
+        
+        // Check if account was already created (in case of page refresh)
+        window.addEventListener('DOMContentLoaded', function() {
+            const pendingEmail = sessionStorage.getItem('pendingEmail');
+            const pendingPassword = sessionStorage.getItem('pendingPassword');
+            
+            if (pendingEmail && pendingPassword) {
+                // Show choice screen if credentials are in session storage
+                const formScreen = document.getElementById('formScreen');
+                const choiceScreen = document.getElementById('choiceScreen');
+                
+                formScreen.style.display = 'none';
+                formScreen.classList.add('hidden');
+                choiceScreen.style.display = 'block';
+                choiceScreen.classList.add('active');
+            }
+        });
 
         function showError(message) {
             errorMessage.textContent = message;
@@ -223,8 +247,15 @@
             errorMessage.style.display = 'none';
         }
 
+        let isSubmitted = false; // Track if form has been successfully submitted
+
         registerForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            // Prevent multiple submissions
+            if (isSubmitted) {
+                return;
+            }
             
             const name = document.getElementById('name').value.trim();
             const email = document.getElementById('email').value.trim().toLowerCase();
@@ -255,13 +286,28 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    // Store email temporarily for face registration
-                    sessionStorage.setItem('pendingEmail', email);
-                    sessionStorage.setItem('pendingPassword', password);
+                    // Mark as submitted to prevent resubmission
+                    isSubmitted = true;
                     
-                    // Hide form and show choice screen
-                    document.getElementById('formScreen').classList.add('hidden');
-                    document.getElementById('choiceScreen').classList.add('active');
+                    // Clear any pending credentials since approval is required
+                    sessionStorage.removeItem('pendingEmail');
+                    sessionStorage.removeItem('pendingPassword');
+                    
+                    // Hide form and show approval pending message
+                    const formScreen = document.getElementById('formScreen');
+                    const choiceScreen = document.getElementById('choiceScreen');
+                    
+                    // Use both inline styles and classes for maximum compatibility
+                    formScreen.style.display = 'none';
+                    formScreen.classList.add('hidden');
+                    choiceScreen.style.display = 'block';
+                    choiceScreen.classList.add('active');
+                    
+                    // Prevent form from being submitted again
+                    registerForm.onsubmit = function(e) {
+                        e.preventDefault();
+                        return false;
+                    };
                 } else {
                     showError(result.error || 'Failed to create account');
                     submitBtn.disabled = false;
@@ -275,17 +321,7 @@
             }
         });
 
-        // Handle choice buttons
-        document.getElementById('registerFaceBtn').addEventListener('click', function() {
-            window.location.href = 'RegisterFace.html';
-        });
-
-        document.getElementById('skipFaceBtn').addEventListener('click', function() {
-            // Clear session storage
-            sessionStorage.removeItem('pendingEmail');
-            sessionStorage.removeItem('pendingPassword');
-            window.location.href = 'login.html';
-        });
+        // Note: Face registration buttons removed since approval is required first
     </script>
 </body>
 </html>

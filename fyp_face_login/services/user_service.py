@@ -55,7 +55,7 @@ class UserService:
         if self.user_repo.exists(email_lower):
             return False, None, "Email already registered"
         
-        # Create new user
+        # Create new user with pending status (requires admin approval)
         user_id = self.generate_user_id()
         password_hash = self.hash_password(password)
         
@@ -64,7 +64,8 @@ class UserService:
             user_id=user_id,
             password_hash=password_hash,
             name=name.strip(),
-            face_registered=False
+            face_registered=False,
+            registration_status=User.STATUS_PENDING
         )
         
         self.user_repo.save(user)
@@ -87,6 +88,13 @@ class UserService:
         
         if not self.verify_password(password, user.password_hash):
             return False, None, "Invalid email or password"
+        
+        # Check registration approval status
+        if user.is_pending():
+            return False, None, "Your registration is pending approval. Please wait for admin approval before logging in."
+        
+        if user.is_rejected():
+            return False, None, "Your registration has been rejected. Please contact support."
         
         # Check face registration status
         user.face_registered = self.face_repo.exists(user.user_id)
