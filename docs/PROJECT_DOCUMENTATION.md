@@ -615,9 +615,9 @@ Press CTRL+C to quit
 ```bash
 # Open a NEW terminal window
 cd /Users/timothypan/Desktop/school/FYP/FYP
-python3 -m http.server 8080
+python3 -m http.server 5500
 ```
-Then open: `http://localhost:8080/home page.html`
+Then open: `http://localhost:5500/home page.html`
 
 **Option C: Direct File Open**
 - Simply double-click `home page.html`

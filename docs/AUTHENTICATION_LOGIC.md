@@ -1,10 +1,24 @@
 # Face Recognition Authentication Logic
 
+## Face Recognition Engine
+
+**Current System:** Uses **InsightFace (ArcFace)** with automatic fallback to dlib's face_recognition library.
+
+**InsightFace Benefits:**
+- ✅ **Better glasses handling** - Handles occlusions (glasses, hats) much better than dlib
+- ✅ **512-dimensional embeddings** - More accurate than 128D dlib embeddings
+- ✅ **Deep learning model** - Trained on large datasets with diverse face variations
+- ✅ **Automatic face alignment** - Better preprocessing for recognition
+
+**Fallback:** If InsightFace is not available, system automatically falls back to face_recognition library (dlib).
+
 ## Current Authentication Flow
 
 ### Step 1: Face Detection
 1. User scans face via camera
-2. System extracts face embedding (128-dimensional vector)
+2. System extracts face embedding:
+   - **InsightFace**: 512-dimensional vector (better accuracy)
+   - **dlib fallback**: 128-dimensional vector
 3. Validates exactly 1 face detected
 
 ### Step 2: Face Matching
@@ -12,17 +26,20 @@ System compares scanned face against all registered faces:
 
 **If Multiple Faces Registered:**
 - Calculates distance to ALL registered faces
+  - **InsightFace**: Uses cosine distance (better for glasses)
+  - **dlib**: Uses euclidean distance
 - Finds best match (lowest distance)
 - Finds second-best match
 - **Requires:**
-  - Best distance ≤ 0.3 (VERIFY_THRESHOLD)
-  - Best match must be ≥ 0.2 better than second-best
+  - Best distance ≤ 0.35 (VERIFY_THRESHOLD for InsightFace, 0.3 for dlib)
+  - Best match must be ≥ 0.15 better than second-best (InsightFace) or ≥ 0.2 (dlib)
   - This ensures unambiguous match
 
 **If Only One Face Registered:**
 - Calculates distance to the single registered face
 - **Requires:**
-  - Distance ≤ 0.25 (SINGLE_FACE_THRESHOLD - )
+  - Distance ≤ 0.30 (SINGLE_FACE_THRESHOLD for InsightFace - more lenient for glasses)
+  - Distance ≤ 0.25 (SINGLE_FACE_THRESHOLD for dlib)
   - This prevents false matches when only one face exists
 
 ### Step 3: Decision

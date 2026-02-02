@@ -72,6 +72,7 @@ class FaceRepository:
             return None, None
         
         user_ids = list(encodings.keys())
+        # Stack encodings - handles both 128D (dlib) and 512D (InsightFace) embeddings
         encoding_arrays = np.stack([enc.encoding for enc in encodings.values()], axis=0)
         
         return user_ids, encoding_arrays

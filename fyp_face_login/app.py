@@ -111,28 +111,48 @@ def login():
 @app.route("/api/register_face", methods=["POST"])
 def register_face():
     """Register face for an existing account"""
-    data = request.get_json(force=True)
-    image_b64 = data.get("image")
-    email = data.get("email", "").strip().lower()
-    password = data.get("password", "")
+    try:
+        data = request.get_json(force=True)
+        image_b64 = data.get("image")
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
 
-    if not image_b64:
-        return jsonify({"success": False, "error": "image required"}), 400
+        if not image_b64:
+            return jsonify({"success": False, "error": "image required"}), 400
 
-    result = registration_controller.register_face(image_b64, email, password)
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
+        result = registration_controller.register_face(image_b64, email, password)
+        status_code = 200 if result.get("success") else 400
+        return jsonify(result), status_code
+    except ValueError as e:
+        # Handle image decoding errors
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        # Handle any other errors
+        print(f"ERROR in register_face: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Internal server error processing face image"}), 500
 
 @app.route("/api/verify_face", methods=["POST"])
 def verify_face():
     """Login using facial recognition"""
-    data = request.get_json(force=True)
-    image_b64 = data.get("image")
+    try:
+        data = request.get_json(force=True)
+        image_b64 = data.get("image")
 
-    if not image_b64:
-        return jsonify({"success": False, "error": "image required"}), 400
+        if not image_b64:
+            return jsonify({"success": False, "error": "image required"}), 400
 
-    result = auth_controller.login_with_face(image_b64)
+        result = auth_controller.login_with_face(image_b64)
+    except ValueError as e:
+        # Handle image decoding errors
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        # Handle any other errors
+        print(f"ERROR in verify_face: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Internal server error processing face image"}), 500
     
     # Add threshold info for debugging
     if not result.get("success"):
@@ -155,20 +175,30 @@ def verify_face():
 @app.route("/api/reset_face", methods=["POST"])
 def reset_face():
     """Reset facial recognition for an account"""
-    data = request.get_json(force=True)
-    email = data.get("email", "").strip().lower()
-    password = data.get("password", "")
-    image_b64 = data.get("image")
+    try:
+        data = request.get_json(force=True)
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "")
+        image_b64 = data.get("image")
 
-    if not email or not password:
-        return jsonify({"success": False, "error": "Email and password required"}), 400
+        if not email or not password:
+            return jsonify({"success": False, "error": "Email and password required"}), 400
 
-    if not image_b64:
-        return jsonify({"success": False, "error": "Image required"}), 400
+        if not image_b64:
+            return jsonify({"success": False, "error": "Image required"}), 400
 
-    result = registration_controller.reset_face(image_b64, email, password)
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
+        result = registration_controller.reset_face(image_b64, email, password)
+        status_code = 200 if result.get("success") else 400
+        return jsonify(result), status_code
+    except ValueError as e:
+        # Handle image decoding errors
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        # Handle any other errors
+        print(f"ERROR in reset_face: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": "Internal server error processing face image"}), 500
 
 @app.route("/api/forgot_password", methods=["POST"])
 def forgot_password():

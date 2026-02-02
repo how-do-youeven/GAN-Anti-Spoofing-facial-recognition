@@ -162,8 +162,19 @@
                     // Redirect to home page immediately
                     window.location.href = 'home page.html';
                 } else {
-                    statusMsg.textContent = result.error || 'Face not recognized. Please try again.';
+                    // Display error message
+                    const errorText = result.error || 'Face not recognized. Please try again.';
+                    statusMsg.textContent = errorText;
                     statusMsg.style.color = '#d32f2f';
+                    
+                    // Special handling for "too far away" message - make it more prominent
+                    if (errorText.includes('move closer') || errorText.includes('too far away')) {
+                        statusMsg.style.fontSize = '1.1em';
+                        statusMsg.style.fontWeight = 'bold';
+                    } else {
+                        statusMsg.style.fontSize = '';
+                        statusMsg.style.fontWeight = '';
+                    }
                     
                     // Check if face login is disabled
                     if (result.face_login_disabled) {

@@ -67,8 +67,11 @@ class AuthController:
         if not success:
             error_msg = "Face not recognized"
             
+            # Check if face is too small/far away (distance = -2.0)
+            if distance == -2.0:
+                error_msg = "Please move closer to the camera. Your face is too far away for accurate detection."
             # Check if spoofed face was detected (distance = -1.0)
-            if distance == -1.0:
+            elif distance == -1.0:
                 error_msg = "Spoofed face detected. Please use a real face for authentication."
             elif distance is not None and distance > 0:
                 # Provide more helpful error message with distance info

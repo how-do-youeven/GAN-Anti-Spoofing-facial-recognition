@@ -223,6 +223,9 @@
             const imageData = canvas.toDataURL('image/jpeg');
 
             try {
+                this.disabled = true;
+                this.textContent = 'Processing...';
+                
                 const response = await fetch(`${BACKEND_URL}/api/register_face`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -232,14 +235,13 @@
                         password: password
                     })
                 });
-
+                
                 const result = await response.json();
 
                 if (result.success) {
                     stopCamera();
                     document.getElementById('registrationForm').style.display = 'none';
                     document.getElementById('successScreen').style.display = 'block';
-                    // Clear session storage
                     sessionStorage.removeItem('pendingEmail');
                     sessionStorage.removeItem('pendingPassword');
                 } else {
@@ -248,8 +250,14 @@
                     this.textContent = 'Capture Face';
                 }
             } catch (error) {
-                showError('Error connecting to server. Make sure the backend is running.');
-                console.error(error);
+                console.error('Registration error:', error);
+                let errorMsg = 'Error connecting to server. ';
+                if (error.message && error.message.includes('Failed to fetch')) {
+                    errorMsg += 'Cannot reach backend server. Make sure it\'s running on http://localhost:8000';
+                } else {
+                    errorMsg += error.message || 'Unknown error';
+                }
+                showError(errorMsg);
                 this.disabled = false;
                 this.textContent = 'Capture Face';
             }

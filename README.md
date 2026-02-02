@@ -123,15 +123,15 @@ The server will start on `http://localhost:8000`
 
 **macOS/Linux:**
 ```bash
-python3 -m http.server 8080
+python3 -m http.server 5500
 ```
 
 **Windows:**
 ```bash
-python -m http.server 8080
+python -m http.server 5500
 ```
 
-Then open: `http://localhost:8080/frontend/home page.html`
+Then open: `http://localhost:5500/frontend/home page.html`
 
 **Option 3: Direct File Open**
 - Navigate to `frontend/` folder and double-click `home page.html` (some browsers may block CORS)
@@ -215,10 +215,17 @@ FYP-Facial-Recognition-Login/
 
 Face recognition security thresholds are configured in `fyp_face_login/services/face_recognition_service.py`:
 
+**InsightFace (Primary - Better glasses handling):**
+- `VERIFY_THRESHOLD`: 0.35 (for multi-face scenarios)
+- `SINGLE_FACE_THRESHOLD`: 0.30 (for single-face scenarios - more lenient for glasses)
+
+**dlib fallback:**
 - `VERIFY_THRESHOLD`: 0.3 (for multi-face scenarios)
 - `SINGLE_FACE_THRESHOLD`: 0.25 (for single-face scenarios)
 
 Lower values = stricter matching (more secure)
+
+**Note:** The system uses InsightFace (ArcFace) by default, which handles glasses and occlusions much better than dlib. If InsightFace is not available, it automatically falls back to the face_recognition library.
 
 ### CORS Configuration
 
