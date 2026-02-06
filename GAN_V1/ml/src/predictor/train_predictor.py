@@ -5,14 +5,14 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import transforms, models
-
+from ml.src.predictor.model import AntiSpoofAndIDModel
 from ml.src.utils.dataset_imagefolder import ImageFolderBinary
 
-
-def build_model(num_classes=2):
-    m = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-    m.fc = nn.Linear(m.fc.in_features, num_classes)
-    return m
+# old model
+# def build_model(num_classes=2):
+#     m = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+#     m.fc = nn.Linear(m.fc.in_features, num_classes)
+#     return m
 
 
 def acc_from_logits(logits, y):
@@ -62,8 +62,9 @@ def main():
                               num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False,
                             num_workers=num_workers, pin_memory=True)
-
-    model = build_model(num_classes=2).to(device)
+    #old model
+    #model = build_model(num_classes=2).to(device)
+    model = AntiSpoofAndIDModel(num_spoof_classes=2, emb_dim=256, pretrained=True).to(device)
     crit = nn.CrossEntropyLoss()
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     scaler = torch.cuda.amp.GradScaler(enabled=(device == "cuda"))
@@ -85,7 +86,7 @@ def main():
 
             opt.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=(device == "cuda")):
-                logits = model(x)
+                logits, emb = model(x)  # emb is not used yet for loss
                 loss = crit(logits, y)
 
             scaler.scale(loss).backward()
@@ -105,7 +106,7 @@ def main():
                 x = x.to(device, non_blocking=True)
                 y = torch.tensor(y, device=device)
                 with torch.cuda.amp.autocast(enabled=(device == "cuda")):
-                    logits = model(x)
+                    logits, emb = model(x)  # 
                     loss = crit(logits, y)
                 va_loss += loss.item()
                 va_acc += acc_from_logits(logits, y)
