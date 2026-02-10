@@ -82,11 +82,17 @@ This project follows the **BCE (Business-Control-Entity) Framework** architectur
   - `hash_password()`, `verify_password()`: Password security
   - `generate_user_id()`: Create unique user IDs
 
-- **FaceRecognitionService**: Face recognition business logic
-  - `register_face()`: Register face for user (with duplicate checking)
-  - `verify_face()`: Verify face for login
+- **FaceRecognitionService**: Face verification and anti-spoof coordination
+  - Uses **InsightFace** (ArcFace 512D) for detection and matching
+  - Delegates anti-spoof to **SilentFaceSpoofService** (full frame + bbox) or **SpoofDetectionService** (GAN predictor on face crop)
+  - `register_face()`: Register face for user (InsightFace embedding only)
+  - `verify_face()`: Verify face for login (anti-spoof then match; returns real_prob, spoof_prob)
   - `reset_face()`: Update face encoding
-  - `decode_base64_image()`, `get_face_embedding()`: Image processing
+  - Logs to activity_log and audit_log on verify
+
+- **SilentFaceSpoofService** (`silent_face_spoof_service.py`): Silent Face (minivision-ai) anti-spoof; full image + face bbox.
+
+- **SpoofDetectionService** (`spoof_detection_service.py`): GAN predictor anti-spoof; pre-cropped face image.
 
 - **AdminService**: Admin operations business logic
   - `authenticate()`: Admin login validation
@@ -118,6 +124,13 @@ This project follows the **BCE (Business-Control-Entity) Framework** architectur
 - Routes delegate to controllers
 - Handle HTTP request/response
 - No business logic (only routing)
+- Rate limiting applied to `/api/verify_face`
+
+### 6. Supporting modules (same package)
+- **activity_log.py**: In-memory log of face verification attempts (real/spoof probs, spoof check, verification result); served at `GET /api/activity-log`.
+- **audit_log.py**: Persistent file log (`audit_face.jsonl`) for verification attempts.
+- **rate_limit.py**: Per-IP rate limiting for verify_face.
+- **vendor/**: Vendored Silent Face crop and MiniFASNet model code.
 
 ## Benefits of BCE Framework
 
@@ -147,7 +160,13 @@ fyp_face_login/
 │   ├── __init__.py
 │   ├── user_service.py
 │   ├── face_recognition_service.py
+│   ├── spoof_detection_service.py   # GAN predictor
+│   ├── silent_face_spoof_service.py # Silent Face anti-spoof
 │   └── admin_service.py
+├── vendor/                   # Vendored code (Silent Face)
+├── activity_log.py           # In-memory activity log
+├── audit_log.py              # Persistent audit log
+└── rate_limit.py             # Per-IP rate limiting
 └── controllers/             # Controller Layer
     ├── __init__.py
     ├── auth_controller.py

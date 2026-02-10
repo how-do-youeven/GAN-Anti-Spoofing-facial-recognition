@@ -19,7 +19,8 @@ This is a full-stack web application that implements facial recognition authenti
 **Technology Stack:**
 - **Backend**: Python Flask (REST API)
 - **Frontend**: HTML, CSS, JavaScript
-- **Face Recognition**: face_recognition library (dlib + OpenCV)
+- **Face verification**: InsightFace (ArcFace 512D embeddings); optional dlib fallback
+- **Anti-spoofing**: Silent Face (minivision-ai) by default, with GAN predictor fallback
 - **Architecture**: BCE Framework (Business-Control-Entity)
 
 ---
@@ -562,34 +563,28 @@ Best match found and compared against threshold
 Dependencies are already installed in the virtual environment. If you need to reinstall:
 
 ```bash
-cd /Users/timothypan/Desktop/school/FYP/FYP
+cd FYP-Facial-Recognition-Login   # or your clone path
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Required packages:**
-- flask
-- flask-cors
-- face-recognition
-- opencv-python
-- numpy
-- dlib
-- setuptools
+**Required packages:** flask, flask-cors, insightface, onnxruntime, opencv-python, numpy, torch, torchvision; optional: face-recognition, dlib (for GAN spoof crop fallback).
 
 ### Step 2: Start the Backend Server
 
-**Option A: Using the start script**
+**Option A: Manual start (from project root)**
 ```bash
-cd /Users/timothypan/Desktop/school/FYP/FYP
-./start_server.sh
-```
-
-**Option B: Manual start**
-```bash
-cd /Users/timothypan/Desktop/school/FYP/FYP
+cd FYP-Facial-Recognition-Login
 source venv/bin/activate
 cd fyp_face_login
 python app.py
+```
+
+**Option B: From project root with module**
+```bash
+cd FYP-Facial-Recognition-Login
+source venv/bin/activate
+python -m fyp_face_login.app
 ```
 
 **Expected Output:**
@@ -614,10 +609,10 @@ Press CTRL+C to quit
 **Option B: Using Python HTTP Server**
 ```bash
 # Open a NEW terminal window
-cd /Users/timothypan/Desktop/school/FYP/FYP
+cd FYP-Facial-Recognition-Login
 python3 -m http.server 5500
 ```
-Then open: `http://localhost:5500/home page.html`
+Then open: `http://localhost:5500/frontend/home page.html`
 
 **Option C: Direct File Open**
 - Simply double-click `home page.html`
@@ -636,8 +631,8 @@ Then open: `http://localhost:5500/home page.html`
 
 3. **Admin Access**:
    - Click "Admin Login" on login page
-   - Email: `admin@school.edu`
-   - Password: `admin123`
+   - System Admin: `system@school.edu` / `admin123`
+   - Operations Admin: `operations@school.edu` / `admin123`
 
 ### Stopping the Server
 
@@ -670,8 +665,10 @@ Press `Ctrl+C` in the terminal where Flask is running.
 - `POST /api/register_account` - Create new account
 - `POST /api/login` - Login with email/password
 - `POST /api/register_face` - Register face for account
-- `POST /api/verify_face` - Login with facial recognition
+- `POST /api/verify_face` - Login with facial recognition (returns `real_prob`, `spoof_prob` when anti-spoof runs)
 - `POST /api/reset_face` - Reset facial recognition
+- `GET /api/activity-log` - Recent face verification activity
+- `GET /api/status` - Backend status (InsightFace, spoof backend)
 - `POST /api/forgot_password` - Request password reset
 - `POST /api/forgot_email` - Recover email address
 

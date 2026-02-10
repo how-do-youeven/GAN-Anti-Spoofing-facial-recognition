@@ -23,7 +23,11 @@ A full-stack web application implementing facial recognition authentication for 
 ### Technical Features
 - **BCE Framework Architecture**: Clean, maintainable code structure
 - **Responsive UI**: Modern, user-friendly interface
-- **Spoof Detection**: Protection against photo/video spoofing attacks
+- **Face verification**: InsightFace ArcFace (512D embeddings) for detection and matching
+- **Anti-spoofing**: Silent Face (minivision-ai) by default, with GAN predictor fallback; blocks photo/screen attacks
+- **Activity log**: Real/spoof probabilities and verification results (in-memory, viewable at `/activity-log`)
+- **Audit log**: Persistent file log of verification attempts (`audit_face.jsonl`)
+- **Rate limiting**: Per-IP limits on `/api/verify_face`
 
 ## 🏗️ Architecture
 
@@ -65,8 +69,8 @@ sudo apt-get install cmake
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd FYP
+   git clone https://github.com/timthemanpan/FYP-Facial-Recognition-Login.git
+   cd FYP-Facial-Recognition-Login
    ```
 
 2. **Create and activate virtual environment**
@@ -106,7 +110,12 @@ cd fyp_face_login
 python app.py
 ```
 
-The server will start on `http://localhost:8000`
+The server will start on `http://localhost:8000`.
+
+**Optional environment variables** (set before running):
+- `SPOOF_BACKEND=gan` — Use only the GAN predictor for anti-spoof (skip Silent Face). Use if Silent Face models are not set up.
+- `GAN_PREDICTOR_MODEL_PATH` — Full path to `predictor_best.pt` if not using the default `GAN_V1/ml/exports/predictor_best.pt`.
+- `FACE_USE_CPU=1` — Force InsightFace to use CPU only (e.g. if ONNX GPU fails).
 
 **Note:** If you encounter issues with `dlib` installation on Windows:
 1. Make sure CMake is installed and added to PATH
@@ -147,6 +156,7 @@ FYP-Facial-Recognition-Login/
 │   ├── RegisterAccount.html    # Account registration
 │   ├── RegisterFace.html       # Face registration
 │   ├── Profile.html            # Student profile page
+│   ├── ActivityLog.html        # Activity log (real/spoof probs, verification results)
 │   ├── ResetFacialRecognition.html
 │   ├── AdminLogin.html         # Admin login
 │   ├── AdminDashboard.html     # Admin dashboard (role-based)
@@ -168,7 +178,12 @@ FYP-Facial-Recognition-Login/
 │   │   ├── user_service.py
 │   │   ├── admin_service.py
 │   │   ├── face_recognition_service.py
-│   │   └── spoof_detection_service.py
+│   │   ├── spoof_detection_service.py   # GAN predictor (face-crop)
+│   │   └── silent_face_spoof_service.py # Silent Face anti-spoof (full frame + bbox)
+│   ├── vendor/                  # Vendored code (Silent Face crop + MiniFASNet)
+│   ├── activity_log.py          # In-memory activity log for face verify
+│   ├── audit_log.py             # Persistent audit log (audit_face.jsonl)
+│   ├── rate_limit.py            # Per-IP rate limiting for verify_face
 │   ├── controllers/             # Controller Layer
 │   │   ├── auth_controller.py
 │   │   ├── registration_controller.py
@@ -180,8 +195,9 @@ FYP-Facial-Recognition-Login/
 ├── docs/                        # Documentation
 │   ├── ARCHITECTURE.md          # Architecture documentation
 │   ├── AUTHENTICATION_LOGIC.md  # Authentication logic
+│   ├── FACIAL_RECOGNITION_SERVICE.md  # Face verification & storage
+│   ├── BEST_FACIAL_RECOGNITION_SERVICE.md # Checklist & features
 │   ├── PROJECT_DOCUMENTATION.md # Complete documentation
-│   ├── GITHUB_SETUP.md          # GitHub setup guide
 │   └── ...
 ├── requirements.txt             # Python dependencies
 ├── README.md                    # This file
@@ -206,8 +222,9 @@ FYP-Facial-Recognition-Login/
 
 - **[docs/PROJECT_DOCUMENTATION.md](docs/PROJECT_DOCUMENTATION.md)**: Complete project documentation
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**: BCE framework architecture details
-- **[docs/AUTHENTICATION_LOGIC.md](docs/AUTHENTICATION_LOGIC.md)**: Authentication logic explanation
-- **[docs/GITHUB_SETUP.md](docs/GITHUB_SETUP.md)**: GitHub repository setup guide
+- **[docs/AUTHENTICATION_LOGIC.md](docs/AUTHENTICATION_LOGIC.md)**: Authentication logic (InsightFace, Silent Face, GAN)
+- **[docs/FACIAL_RECOGNITION_SERVICE.md](docs/FACIAL_RECOGNITION_SERVICE.md)**: Face verification and storage
+- **[docs/BEST_FACIAL_RECOGNITION_SERVICE.md](docs/BEST_FACIAL_RECOGNITION_SERVICE.md)**: Feature checklist and behaviour
 
 ## 🔧 Configuration
 
@@ -225,7 +242,16 @@ Face recognition security thresholds are configured in `fyp_face_login/services/
 
 Lower values = stricter matching (more secure)
 
-**Note:** The system uses InsightFace (ArcFace) by default, which handles glasses and occlusions much better than dlib. If InsightFace is not available, it automatically falls back to the face_recognition library.
+**Anti-spoofing:** By default the app tries **Silent Face** (minivision-ai) first; place `.pth` models in `Silent-Face-Anti-Spoofing/resources/anti_spoof_models/` (see that repo's README). If Silent Face is not available, it uses the **GAN predictor** (`GAN_V1/ml/exports/predictor_best.pt`). Set `SPOOF_BACKEND=gan` to use only the GAN predictor.
+
+**Note:** The system uses **InsightFace (ArcFace)** for face detection and verification (512D embeddings). If InsightFace is not available (e.g. missing `onnxruntime`), the app reports this on `/api/status` and `/api/diagnose/insightface`.
+
+### Anti-spoof (Silent Face vs GAN)
+
+- **Default:** App tries **Silent Face** first (needs `Silent-Face-Anti-Spoofing` clone and `.pth` models in `Silent-Face-Anti-Spoofing/resources/anti_spoof_models/`). See [minivision-ai/Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing) for model download.
+- **Fallback:** If Silent Face is not available, **GAN predictor** is used (`GAN_V1/ml/exports/predictor_best.pt`). Requires `torch` and `torchvision`.
+- **Force GAN only:** Set `SPOOF_BACKEND=gan` to skip Silent Face and use only the GAN predictor.
+- **Check status:** `GET http://localhost:8000/api/status` shows `insightface`, `spoof_backend` (`silent_face` / `gan` / `none`), and any `spoof_backend_error` or `insightface_error`.
 
 ### CORS Configuration
 
@@ -258,11 +284,15 @@ CORS is configured in `fyp_face_login/app.py` to allow all origins for developme
 - `POST /api/login` - Login with email/password (only if approved)
 - `GET /api/user/profile` - Get user profile information
 - `POST /api/register_face` - Register face for account (only if approved)
-- `POST /api/verify_face` - Login with facial recognition (tracks failures, disables after 5)
+- `POST /api/verify_face` - Login with facial recognition (rate-limited; returns `real_prob`, `spoof_prob` when anti-spoof runs; tracks failures, disables after 5)
 - `POST /api/reset_face` - Reset facial recognition (re-enables face login)
 - `POST /api/forgot_password` - Request password reset
 - `POST /api/forgot_email` - Recover email address
 - `POST /api/feedback` - Submit feedback to operations admin
+- `GET /api/activity-log` - Recent face verification activity (real/spoof probs, spoof check, verification result)
+- `POST /api/activity-log/clear` - Clear in-memory activity log
+- `GET /api/status` - Backend status (InsightFace, spoof backend, registered face count, optional `insightface_error` / `spoof_backend_error`)
+- `GET /api/diagnose/insightface` - Step-by-step InsightFace diagnostics
 
 ### Admin Endpoints
 
@@ -292,8 +322,10 @@ CORS is configured in `fyp_face_login/app.py` to allow all origins for developme
 - **Registration Approval**: New accounts require admin approval before access
 - **Role-Based Access**: Separate admin roles with different permissions
 - **CORS**: Configured for development (update for production)
+- **Rate limiting**: Per-IP limits on `/api/verify_face` to reduce abuse
+- **Audit log**: Verification attempts logged to `audit_face.jsonl` (gitignored)
 - **Input Validation**: All endpoints validate input data
-- **Data Protection**: Sensitive files (user accounts, face data, admin config, feedback) are gitignored
+- **Data Protection**: Sensitive files (user accounts, face data, admin config, feedback, audit log) are gitignored
 
 ## 🐛 Troubleshooting
 
@@ -352,7 +384,7 @@ For technical support or questions, please contact the development team.
 - Migrating to a proper database (PostgreSQL, MySQL)
 - Using bcrypt for password hashing
 - Implementing HTTPS
-- Adding rate limiting
+- Tightening rate limits and CORS
 - Implementing proper session management
 - Adding email verification
-- Setting up proper logging and monitoring
+- Setting up proper logging and monitoring (audit log is already persisted to file)

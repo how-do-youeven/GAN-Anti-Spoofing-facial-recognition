@@ -39,6 +39,8 @@ System compares the 512D embedding to all registered faces (cosine distance):
 
 ### Step 4: Decision
 
+The API returns `real_prob` and `spoof_prob` (0–1) when anti-spoof runs. The in-memory **activity log** (`GET /api/activity-log`, or the Activity Log page) records each attempt with these values plus spoof check and verification result.
+
 **ACCEPT Login If:**
 - Distance ≤ threshold (0.3 for multi-face, 0.25 for single-face)
 - AND (if multiple faces) best match is clearly better than others
