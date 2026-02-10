@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart School Login | Facial Recognition System</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            color: #333;
+            background: #ffffff;
+        }
+
+        /* ===== Header ===== */
+        header {
+            background: linear-gradient(90deg, #0a3d91, #0f5fd6);
+            color: white;
+            padding: 28px 20px 60px;
+            text-align: center;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+        }
+        header h1 {
+            font-size: 44px;
+            margin-bottom: 15px;
+        }
+        header p {
+            font-size: 20px;
+            max-width: 700px;
+            margin: auto;
+        }
+        .cta {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 15px 40px;
+            background: white;
+            color: #0059b3;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            text-decoration: none;
+            transition: 0.3s;
+        }
+        .cta:hover {
+            background: #e8f0ff;
+        }
+
+        /* ===== Sections ===== */
+        section {
+            padding: 70px 20px;
+            max-width: 1100px;
+            margin: auto;
+        }
+        .section-title {
+            text-align: center;
+            font-size: 32px;
+            color: #003d80;
+            margin-bottom: 40px;
+        }
+
+        /* ===== Features ===== */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            justify-items: center;
+        }
+        .card {
+            background: #ffffff;
+            width: 280px;
+            padding: 28px;
+            border-radius: 14px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .card:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 18px 35px rgba(0, 0, 0, 0.12);
+        }
+        .card h3 {
+            color: #0059b3;
+            margin-bottom: 10px;
+        }
+        .card p {
+            color: #555;
+            line-height: 1.6;
+        }
+
+        /* ===== How It Works ===== */
+        .how-it-works {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+        .step {
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 18px;
+            border-left: 6px solid #007bff;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+        }
+        .step h4 {
+            margin-top: 0;
+            color: #003d80;
+        }
+
+        /* ===== Audience ===== */
+        .audience {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            justify-content: center;
+        }
+        .audience-card {
+            background: #f0f6ff;
+            padding: 30px;
+            border-radius: 18px;
+            width: 320px;
+            text-align: center;
+        }
+
+        /* ===== Members ===== */
+        .members-section {
+            background: #f8fafc;
+            padding: 80px 20px;
+        }
+        .members-section h2 {
+            text-align: center;
+            font-size: 32px;
+            color: #003d80;
+            margin-bottom: 10px;
+        }
+        .members-subtitle {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 45px;
+        }
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 30px;
+            max-width: 1100px;
+            margin: auto;
+        }
+        .member-card {
+            background: white;
+            padding: 25px 20px;
+            border-radius: 16px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.25s ease;
+        }
+        .member-card:hover {
+            transform: translateY(-6px);
+        }
+        .member-card img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 15px;
+        }
+        .member-card h3 {
+            font-size: 18px;
+            color: #0059b3;
+            margin-bottom: 5px;
+        }
+        .member-card p {
+            font-size: 14px;
+            color: #666;
+        }
+
+        /* ===== Footer ===== */
+        footer {
+            background: #003d80;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        footer p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Smart School Facial Login</h1>
+    <p>A secure, fast, and password-free authentication system for modern school applications.</p>
+    <a href="#contact" class="cta">Request a Demo</a>
+</header>
+
+<section>
+    <h2 class="section-title">Why Choose Facial Recognition?</h2>
+    <div class="features">
+        <div class="card">
+            <h3>🔐 Secure Authentication</h3>
+            <p>Advanced facial recognition ensures only registered users gain access.</p>
+        </div>
+        <div class="card">
+            <h3>⚡ Fast & Convenient</h3>
+            <p>Instant login without remembering passwords.</p>
+        </div>
+        <div class="card">
+            <h3>🧠 AI-Powered</h3>
+            <p>Adapts to changes like glasses, lighting, and appearance.</p>
+        </div>
+        <div class="card">
+            <h3>🛡️ Admin Control</h3>
+            <p>Manage users, logs, and system security easily.</p>
+        </div>
+    </div>
+</section>
+
+<section>
+    <h2 class="section-title">How It Works</h2>
+    <div class="how-it-works">
+        <div class="step">
+            <h4>1. Face Registration</h4>
+            <p>Students securely register their face using a live camera.</p>
+        </div>
+        <div class="step">
+            <h4>2. Facial Verification</h4>
+            <p>Real-time recognition verifies the user's identity.</p>
+        </div>
+        <div class="step">
+            <h4>3. Instant Access</h4>
+            <p>Successful verification grants immediate system access.</p>
+        </div>
+    </div>
+</section>
+
+<section>
+    <h2 class="section-title">Who Is It For?</h2>
+    <div class="audience">
+        <div class="audience-card">
+            <h3>🎓 Students</h3>
+            <p>Quick access to schedules, notifications, and courses.</p>
+        </div>
+        <div class="audience-card">
+            <h3>🏫 Institutions</h3>
+            <p>Modernize authentication and improve campus security.</p>
+        </div>
+        <div class="audience-card">
+            <h3>👨‍💻 Administrators</h3>
+            <p>Monitor, approve, and manage users efficiently.</p>
+        </div>
+    </div>
+</section>
+
+<section class="members-section">
+    <h2>Our Members</h2>
+    <p class="members-subtitle">Meet the team behind the Facial Recognition Login System</p>
+
+    <div class="members-grid">
+        <div class="member-card">
+            <img src="https://via.placeholder.com/150" alt="Member 1">
+            <h3>Member Name</h3>
+            <p>Project Leader / AI Engineer</p>
+        </div>
+        <div class="member-card">
+            <img src="https://via.placeholder.com/150" alt="Member 2">
+            <h3>Member Name</h3>
+            <p>Backend Developer</p>
+        </div>
+        <div class="member-card">
+            <img src="https://via.placeholder.com/150" alt="Member 3">
+            <h3>Loh Syn Kiat</h3>
+            <p>Frontend Developer</p>
+        </div>
+        <div class="member-card">
+            <img src="https://via.placeholder.com/150" alt="Member 4">
+            <h3>Member Name</h3>
+            <p>Frontend Developer</p>
+        </div>
+        <div class="member-card">
+            <img src="https://via.placeholder.com/150" alt="Member 5">
+            <h3>Member Name</h3>
+            <p>Security & Testing</p>
+        </div>
+        <div class="member-card">
+            <img src="https://via.placeholder.com/150" alt="Member 6">
+            <h3>Member Name</h3>
+            <p>Documentation & Research</p>
+        </div>
+    </div>
+</section>
+
+<footer id="contact">
+    <p><strong>Smart School Facial Login</strong></p>
+    <p>Transforming school authentication with AI-powered biometrics</p>
+    <p>© 2025 All Rights Reserved</p>
+</footer>
+
+</body>
+</html>
