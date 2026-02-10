@@ -28,7 +28,7 @@ try:
 finally:
     sys.exit = _original_exit
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 # Import repositories
@@ -41,6 +41,12 @@ from repositories.feedback_repository import FeedbackRepository
 from services.user_service import UserService
 from services.face_recognition_service import FaceRecognitionService
 from services.admin_service import AdminService
+from services.spoof_detection_service import SpoofDetectionService
+try:
+    from services.silent_face_spoof_service import SilentFaceSpoofService
+    SILENT_FACE_AVAILABLE = True
+except Exception:
+    SILENT_FACE_AVAILABLE = False
 
 # Import controllers
 from controllers.auth_controller import AuthController
@@ -60,9 +66,28 @@ admin_repo = AdminRepository("admin_config.json",
                              default_password_hash=None)
 feedback_repo = FeedbackRepository("feedback.json")
 
-# Initialize services
+# Initialize services: anti-spoofing (GAN or Silent Face). Set SPOOF_BACKEND=gan to skip Silent Face.
+spoof_service = None
+spoof_backend_errors = []
+use_gan_only = os.environ.get("SPOOF_BACKEND", "").strip().lower() == "gan"
+if not use_gan_only and SILENT_FACE_AVAILABLE:
+    try:
+        spoof_service = SilentFaceSpoofService()
+        print("✅ Using Silent Face for anti-spoofing")
+    except Exception as e:
+        spoof_backend_errors.append(f"Silent Face: {e}")
+        print(f"Silent Face not used: {e}")
+if spoof_service is None:
+    try:
+        spoof_service = SpoofDetectionService()
+        spoof_backend_errors = []
+        print("✅ Using GAN predictor for anti-spoofing")
+    except Exception as e:
+        spoof_backend_errors.append(f"GAN: {e}")
+        print(f"Spoof detection unavailable: {e}")
+spoof_backend_error = "; ".join(spoof_backend_errors) if spoof_backend_errors else None
 user_service = UserService(user_repo, face_repo)
-face_service = FaceRecognitionService(face_repo, user_repo)
+face_service = FaceRecognitionService(face_repo, user_repo, spoof_detection=spoof_service)
 admin_service = AdminService(admin_repo, user_repo, face_repo, user_service, feedback_repo)
 
 # Initialize controllers
@@ -133,9 +158,30 @@ def register_face():
         traceback.print_exc()
         return jsonify({"success": False, "error": "Internal server error processing face image"}), 500
 
+def _client_ip():
+    """Client IP for rate limit and audit (respect X-Forwarded-For behind proxy)."""
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+
+
 @app.route("/api/verify_face", methods=["POST"])
 def verify_face():
-    """Login using facial recognition"""
+    """Login using facial recognition (rate-limited, audited)."""
+    ip = _client_ip()
+    try:
+        from rate_limit import check_rate_limit
+        allowed, retry_after = check_rate_limit(ip)
+        if not allowed:
+            resp = jsonify({
+                "success": False,
+                "error": "Too many face login attempts. Please try again later.",
+                "retry_after_seconds": round(retry_after, 1),
+            })
+            resp.status_code = 429
+            resp.headers["Retry-After"] = str(max(1, int(retry_after)))
+            return resp
+    except ImportError:
+        pass
+
     try:
         data = request.get_json(force=True)
         image_b64 = data.get("image")
@@ -145,31 +191,41 @@ def verify_face():
 
         result = auth_controller.login_with_face(image_b64)
     except ValueError as e:
-        # Handle image decoding errors
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
-        # Handle any other errors
         print(f"ERROR in verify_face: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": "Internal server error processing face image"}), 500
-    
-    # Add threshold info for debugging
+
+    # Persistent audit log
+    try:
+        from audit_log import log_verification
+        log_verification(
+            ip=ip,
+            success=result.get("success", False),
+            user_id=result.get("user_id"),
+            reason=result.get("reason"),
+            distance=result.get("distance"),
+        )
+    except ImportError:
+        pass
+
     if not result.get("success"):
-        result["threshold"] = 0.3
+        result["threshold"] = 0.38
         distance = result.get("distance")
         if distance is not None:
-            result["message"] = f"Match distance: {distance:.3f} (must be ≤ 0.3)"
+            result["message"] = f"Match distance: {distance:.3f} (must be ≤ 0.38)"
         else:
             result["message"] = "Face not detected or no faces registered"
-    
+
     if result.get("success"):
         status_code = 200
-    elif result.get("error") == "Face not recognized":
+    elif result.get("reason") in ("match_failed", "no_face_detected") or "not recognized" in result.get("error", ""):
         status_code = 401
     else:
         status_code = 400
-    
+
     return jsonify(result), status_code
 
 @app.route("/api/reset_face", methods=["POST"])
@@ -434,11 +490,167 @@ def update_feedback_status(feedback_id):
     status_code = 200 if result.get("success") else 400
     return jsonify(result), status_code
 
-# ========== Health Check ==========
+# ========== Health & Status ==========
+
+@app.route("/api/status", methods=["GET"])
+def status():
+    """Check if the app is configured correctly for face login (for debugging)."""
+    try:
+        spoof_backend = "none"
+        if face_service.spoof_detection is not None:
+            spoof_backend = "silent_face" if getattr(face_service.spoof_detection, "uses_full_frame", False) else "gan"
+        registered = face_repo.load_all() or {}
+        out = {
+            "ok": True,
+            "insightface": face_service.use_insightface,
+            "insightface_model": getattr(face_service, "insightface_model_name", None),
+            "embedding_type": "insightface_arcface" if face_service.use_insightface else "legacy",
+            "spoof_backend": spoof_backend,
+            "registered_face_count": len(registered),
+            "message": "Backend is running. Ensure you have registered your face (after account approval) to use face login."
+        }
+        if not face_service.use_insightface and getattr(face_service, "insightface_error", None):
+            out["insightface_error"] = face_service.insightface_error
+        if spoof_backend == "none" and spoof_backend_error:
+            out["spoof_backend_error"] = spoof_backend_error
+        return jsonify(out), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/diagnose/insightface", methods=["GET"])
+@app.route("/api/insightface-diagnose", methods=["GET"])  # alternate URL (no slash in path)
+def diagnose_insightface():
+    """Run step-by-step InsightFace diagnostics and return the first failure reason."""
+    steps = []
+    try:
+        # Step 1: import insightface
+        try:
+            import insightface
+            steps.append({"step": "import_insightface", "ok": True})
+        except ImportError as e:
+            steps.append({"step": "import_insightface", "ok": False, "error": str(e)})
+            return jsonify({"ok": False, "steps": steps, "fix": "Run: pip install insightface"}), 200
+
+        # Step 2: import onnxruntime
+        try:
+            import onnxruntime as ort
+            steps.append({"step": "import_onnxruntime", "ok": True, "version": getattr(ort, "__version__", "?")})
+        except ImportError as e:
+            steps.append({"step": "import_onnxruntime", "ok": False, "error": str(e)})
+            return jsonify({"ok": False, "steps": steps, "fix": "Run: pip install onnxruntime"}), 200
+
+        # Step 3: list available providers
+        try:
+            providers = ort.get_available_providers()
+            steps.append({"step": "onnx_providers", "ok": True, "providers": providers})
+        except Exception as e:
+            steps.append({"step": "onnx_providers", "ok": False, "error": str(e)})
+
+        # Step 4: FaceAnalysis with CPU only (most compatible)
+        try:
+            app = insightface.app.FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+            steps.append({"step": "FaceAnalysis_CPU", "ok": True})
+        except Exception as e:
+            steps.append({"step": "FaceAnalysis_CPU", "ok": False, "error": str(e)})
+            return jsonify({"ok": False, "steps": steps, "fix": "Check that insightface and onnxruntime versions are compatible. Try: pip install -U insightface onnxruntime"}), 200
+
+        # Step 5: prepare() - downloads models on first run
+        try:
+            app.prepare(ctx_id=0, det_size=(640, 640))
+            steps.append({"step": "prepare", "ok": True})
+        except Exception as e:
+            steps.append({"step": "prepare", "ok": False, "error": str(e)})
+            return jsonify({
+                "ok": False,
+                "steps": steps,
+                "fix": "Model download may have failed (network/firewall?). First run needs internet. Or set FACE_USE_CPU=1 and restart."
+            }), 200
+
+        steps.append({"step": "all", "ok": True})
+        return jsonify({"ok": True, "steps": steps, "message": "InsightFace is ready. Restart the server to use it."}), 200
+    except Exception as e:
+        import traceback
+        return jsonify({"ok": False, "error": str(e), "steps": steps, "traceback": traceback.format_exc()}), 200
+
+
+def _get_activity_log_module():
+    """Import activity_log from same package or current dir."""
+    try:
+        from activity_log import get_recent, clear
+        return get_recent, clear
+    except ImportError:
+        import sys
+        import os
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        if app_dir not in sys.path:
+            sys.path.insert(0, app_dir)
+        from activity_log import get_recent, clear
+        return get_recent, clear
+
+
+@app.route("/api/activity-log", methods=["GET"])
+def get_activity_log():
+    """Return recent face verification activity (spoof + verification) for the log page."""
+    try:
+        get_recent, _ = _get_activity_log_module()
+        limit = min(int(request.args.get("limit", 100)), 200)
+        return jsonify({"entries": get_recent(limit=limit)}), 200
+    except Exception as e:
+        return jsonify({"error": str(e), "entries": []}), 200  # 200 + JSON so frontend never gets HTML
+
+
+@app.route("/api/activity-log/clear", methods=["POST"])
+def clear_activity_log():
+    """Clear the in-memory activity log."""
+    try:
+        _, clear = _get_activity_log_module()
+        clear()
+        return jsonify({"success": True, "message": "Log cleared"}), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 200
+
+
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+
+
+@app.route("/activity-log")
+def activity_log_page():
+    """Serve the activity log HTML page."""
+    return send_from_directory(_FRONTEND_DIR, "ActivityLog.html")
+
+
+@app.route("/login")
+@app.route("/login.html")
+def login_page():
+    """Serve the face login page."""
+    return send_from_directory(_FRONTEND_DIR, "login.html")
+
 
 @app.route("/")
+def index():
+    """Serve login page at root."""
+    return send_from_directory(_FRONTEND_DIR, "login.html")
+
+
+@app.route("/health")
 def health():
-    return "Face login backend running"
+    """Health check (plain text)."""
+    return "Face login backend running", 200
+
+
+@app.route("/<path:filename>")
+def frontend_file(filename):
+    """Serve other frontend HTML/files (e.g. ManualLogin.html, RegisterAccount.html)."""
+    if ".." in filename or filename.startswith("/"):
+        from flask import abort
+        abort(404)
+    path = os.path.join(_FRONTEND_DIR, filename)
+    if os.path.isfile(path):
+        return send_from_directory(_FRONTEND_DIR, filename)
+    from flask import abort
+    abort(404)
+
 
 if __name__ == "__main__":
     # Use use_reloader=False to avoid issues with stdin/stderr redirection

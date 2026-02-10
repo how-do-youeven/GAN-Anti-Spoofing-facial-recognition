@@ -41,8 +41,8 @@ class AuthController:
         Handle login with facial recognition
         Returns response dictionary
         """
-        # Attempt face verification (returns user_id even on failure for tracking)
-        success, user_id, distance = self.face_service.verify_face(image_b64)
+        # Attempt face verification (returns user_id even on failure for tracking; real_prob/spoof_prob from anti-spoof when available)
+        success, user_id, distance, real_prob, spoof_prob = self.face_service.verify_face(image_b64)
         
         # Get all users to check face login status
         users = self.user_service.user_repo.load_all()
@@ -67,8 +67,11 @@ class AuthController:
         if not success:
             error_msg = "Face not recognized"
             
+            # Check if no faces are registered (distance = -3.0)
+            if distance == -3.0:
+                error_msg = "No faces registered yet. Create an account, get approved, then register your face from your profile or Register Face page."
             # Check if face is too small/far away (distance = -2.0)
-            if distance == -2.0:
+            elif distance == -2.0:
                 error_msg = "Please move closer to the camera. Your face is too far away for accurate detection."
             # Check if spoofed face was detected (distance = -1.0)
             elif distance == -1.0:
@@ -93,15 +96,21 @@ class AuthController:
                 
                 self.user_service.user_repo.save(user)
             
-            return {
+            out = {
                 "success": False,
                 "error": error_msg,
-                "distance": distance if distance != -1.0 else None,  # Don't expose -1.0 to client
-                "threshold": 0.3,  # Include threshold in response for debugging
-                "spoof_detected": distance == -1.0,  # Flag to indicate spoofing
+                "distance": distance if distance not in (-1.0, -2.0, -3.0) else None,
+                "reason": "no_registered_faces" if distance == -3.0 else "face_too_small" if distance == -2.0 else "spoof_detected" if distance == -1.0 else "no_face_detected" if distance is None else "match_failed",
+                "threshold": 0.38,
+                "spoof_detected": distance == -1.0,
                 "face_login_disabled": user.face_login_disabled if user else False,
                 "failures_remaining": max(0, 5 - (user.face_login_failures if user else 0))
             }
+            if real_prob is not None:
+                out["real_prob"] = round(real_prob, 4)
+            if spoof_prob is not None:
+                out["spoof_prob"] = round(spoof_prob, 4)
+            return out
         
         # Success - reset failure count and ensure face login is enabled
         if user:
@@ -115,11 +124,16 @@ class AuthController:
                 "error": "User account not found"
             }
         
-        return {
+        out = {
             "success": True,
             "user_id": user.user_id,
             "email": user.email,
             "name": user.name,
             "distance": distance
         }
+        if real_prob is not None:
+            out["real_prob"] = round(real_prob, 4)
+        if spoof_prob is not None:
+            out["spoof_prob"] = round(spoof_prob, 4)
+        return out
 

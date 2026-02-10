@@ -3,6 +3,7 @@ Spoof Detection Service
 Uses GAN predictor model to detect if a face is real or spoofed
 """
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import transforms, models
@@ -12,15 +13,15 @@ from typing import Tuple, Optional
 
 
 class SpoofDetectionService:
-    """Service for detecting spoofed faces using the GAN predictor model"""
+    """Service for detecting spoofed faces using the GAN predictor model (face-crop based)."""
+
+    uses_full_frame = False  # This backend expects a pre-cropped face image, not full frame + bbox
     
     # Confidence threshold for real face detection
     # Higher value = stricter (more secure, but may reject some real faces)
     # Lower value = more lenient (may allow some spoofed faces)
-    # NOTE: If you're getting false positives (real faces detected as spoofed),
-    # try lowering this threshold (e.g., 0.5 or 0.3)
-    # For security: Use higher threshold to block photos/videos
-    REAL_FACE_THRESHOLD = 0.93  # Require 93% confidence that face is real (EXTREMELY STRICT for spoof detection)
+    # NOTE: If real faces are rejected as spoof, lower this (e.g. 0.7). For production, use 0.85–0.93.
+    REAL_FACE_THRESHOLD = 0.80  # Require 80% confidence that face is real (balanced for usability)
     
     def __init__(self, model_path: Optional[str] = None):
         """
@@ -31,7 +32,10 @@ class SpoofDetectionService:
                        If None, uses default path relative to project root.
         """
         if model_path is None:
-            # Default path: GAN_V1/ml/exports/predictor_best.pt
+            # Allow override via env (e.g. when running from another cwd or different layout)
+            model_path = os.environ.get("GAN_PREDICTOR_MODEL_PATH")
+        if model_path is None or model_path == "":
+            # Default path: GAN_V1/ml/exports/predictor_best.pt relative to repo root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             model_path = os.path.join(project_root, "GAN_V1", "ml", "exports", "predictor_best.pt")
         
@@ -55,7 +59,7 @@ class SpoofDetectionService:
         return model
     
     def _load_model(self):
-        """Load the predictor model from checkpoint"""
+        """Load the predictor model from checkpoint. Supports both plain ResNet18 and GAN_V1 AntiSpoofAndIDModel (backbone+pool+spoof_head)."""
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(
                 f"Spoof detection model not found at: {self.model_path}\n"
@@ -64,20 +68,26 @@ class SpoofDetectionService:
         
         try:
             ckpt = torch.load(self.model_path, map_location="cpu")
+            state = ckpt.get("model_state", ckpt)
+            first_key = next(iter(state.keys()))
             
-            # Extract model parameters
+            # Extract metadata
             self.classes = ckpt.get("classes", ["spoof", "real"])
             self.img_size = ckpt.get("img_size", 224)
-            self.mean = ckpt.get("mean", (0.485, 0.456, 0.406))
-            self.std = ckpt.get("std", (0.229, 0.224, 0.225))
+            self.mean = tuple(ckpt.get("mean", (0.485, 0.456, 0.406)))
+            self.std = tuple(ckpt.get("std", (0.229, 0.224, 0.225)))
             
-            # Build and load model
-            self.model = self._build_model(num_classes=len(self.classes))
-            self.model.load_state_dict(ckpt["model_state"])
+            if "backbone." in first_key:
+                # GAN_V1 predictor: AntiSpoofAndIDModel (backbone + pool + spoof_head)
+                self.model = self._load_gan_predictor(ckpt)
+            else:
+                # Plain ResNet18 + fc
+                self.model = self._build_model(num_classes=len(self.classes))
+                self.model.load_state_dict(state)
+            
             self.model.to(self.device)
             self.model.eval()
             
-            # Create transform pipeline
             self.transform = transforms.Compose([
                 transforms.Resize((self.img_size, self.img_size)),
                 transforms.ToTensor(),
@@ -86,6 +96,29 @@ class SpoofDetectionService:
             
         except Exception as e:
             raise RuntimeError(f"Failed to load spoof detection model: {str(e)}")
+    
+    def _load_gan_predictor(self, ckpt: dict) -> nn.Module:
+        """Load GAN_V1 AntiSpoofAndIDModel and return a module that forwards to spoof logits only."""
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        gan_src = os.path.join(project_root, "GAN_V1", "ml", "src")
+        if gan_src not in sys.path:
+            sys.path.insert(0, gan_src)
+        from predictor.model import AntiSpoofAndIDModel
+        
+        full_model = AntiSpoofAndIDModel(num_spoof_classes=len(ckpt.get("classes", ["spoof", "real"])), emb_dim=256, pretrained=False)
+        state = ckpt["model_state"]
+        # Drop num_batches_tracked so load_state_dict doesn't complain if we use strict=False
+        state = {k: v for k, v in state.items() if "num_batches_tracked" not in k}
+        full_model.load_state_dict(state, strict=False)
+        
+        class SpoofLogitsOnly(nn.Module):
+            def __init__(self, inner):
+                super().__init__()
+                self.inner = inner
+            def forward(self, x):
+                return self.inner(x)[0]
+        
+        return SpoofLogitsOnly(full_model)
     
     def _numpy_to_pil(self, img_rgb: np.ndarray) -> Image.Image:
         """Convert numpy RGB array to PIL Image"""
@@ -173,24 +206,7 @@ class SpoofDetectionService:
         try:
             is_real, real_prob, spoof_prob = self.detect_spoof(img_rgb)
             
-            # Store spoof_prob for later use
             self._last_spoof_prob = spoof_prob
-            
-            # Log the detection results for debugging
-            SPOOF_BLOCK_THRESHOLD = 0.08
-            MIN_REAL_ADVANTAGE = 0.30
-            SUSPICIOUS_THRESHOLD = 0.03
-            is_spoofed_check = (spoof_prob > SPOOF_BLOCK_THRESHOLD) or (spoof_prob >= real_prob) or ((real_prob - spoof_prob) < MIN_REAL_ADVANTAGE) or (spoof_prob > SUSPICIOUS_THRESHOLD and real_prob < 0.97)
-            advantage = real_prob - spoof_prob
-            suspicious = spoof_prob > SUSPICIOUS_THRESHOLD and real_prob < 0.97
-            print(f"SPOOF DETECTION: real={real_prob:.2%}, spoof={spoof_prob:.2%}, threshold={self.REAL_FACE_THRESHOLD:.2%}, classes={self.classes}, result={'REAL' if is_real else 'SPOOFED'}")
-            print(f"  -> real_prob >= threshold? {real_prob >= self.REAL_FACE_THRESHOLD} ({real_prob:.3f} >= {self.REAL_FACE_THRESHOLD:.3f})")
-            print(f"  -> spoof_prob > {SPOOF_BLOCK_THRESHOLD:.2%}? {spoof_prob > SPOOF_BLOCK_THRESHOLD} ({spoof_prob:.3f} > {SPOOF_BLOCK_THRESHOLD:.3f})")
-            print(f"  -> spoof_prob >= real_prob? {spoof_prob >= real_prob} ({spoof_prob:.3f} >= {real_prob:.3f})")
-            print(f"  -> advantage (real-spoof) >= {MIN_REAL_ADVANTAGE:.2%}? {advantage >= MIN_REAL_ADVANTAGE} ({advantage:.3f} >= {MIN_REAL_ADVANTAGE:.3f})")
-            print(f"  -> suspicious pattern (spoof>{SUSPICIOUS_THRESHOLD:.2%} & real<97%)? {suspicious}")
-            print(f"  -> BLOCKED BY SPOOF CHECK? {is_spoofed_check}")
-            
             if not is_real:
                 return False, f"Spoofed face detected (real: {real_prob:.2%}, spoof: {spoof_prob:.2%})", real_prob
             

@@ -1,8 +1,10 @@
 """
 Face Recognition Service
-Business logic for facial recognition operations using InsightFace (ArcFace)
-Better handling of glasses and occlusions compared to dlib
+- Anti-spoofing: Silent Face (silent liveness) when available, else GAN predictor on face crop.
+- Verification: InsightFace ArcFace only (512D embeddings, cosine distance).
+- Thresholds and GPU are configurable via environment variables.
 """
+import os
 import numpy as np
 import cv2
 from typing import Optional, Tuple
@@ -11,14 +13,21 @@ from repositories.face_repository import FaceRepository
 from repositories.user_repository import UserRepository
 from services.spoof_detection_service import SpoofDetectionService
 
-# Try to import InsightFace, fallback to face_recognition if not available
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+# Try to import InsightFace (ArcFace for verification)
 try:
     import insightface
     INSIGHTFACE_AVAILABLE = True
 except ImportError:
     INSIGHTFACE_AVAILABLE = False
 
-# Always import face_recognition for spoof detection (model was trained on dlib crops)
+# face_recognition (dlib) only used for GAN spoof crop when spoof backend is crop-based
 try:
     import face_recognition
     FACE_RECOGNITION_AVAILABLE = True
@@ -29,51 +38,57 @@ except ImportError:
 
 
 class FaceRecognitionService:
-    """Service for face recognition business logic"""
-    
-    # Thresholds for face matching using InsightFace (cosine similarity)
-    # InsightFace uses cosine similarity: higher = more similar (opposite of distance)
-    # We convert to distance: distance = 1 - cosine_similarity
-    # Lower distance = better match
-    # InsightFace typically uses threshold around 0.3-0.4 for cosine distance
-    SAME_FACE_THRESHOLD = 0.35  # For duplicate detection during registration (balanced - allows new faces but detects duplicates)
-    VERIFY_THRESHOLD = 0.38  # For login verification (InsightFace threshold)
-    SINGLE_FACE_THRESHOLD = 0.38  # For single face verification (InsightFace threshold)
-    
-    def __init__(self, face_repo: FaceRepository, user_repo: UserRepository, 
+    """Service for face recognition: InsightFace ArcFace + optional GPU + configurable thresholds."""
+
+    # Thresholds (override via env: FACE_SAME_THRESHOLD, FACE_VERIFY_THRESHOLD)
+    SAME_FACE_THRESHOLD = _float_env("FACE_SAME_THRESHOLD", 0.35)
+    VERIFY_THRESHOLD = _float_env("FACE_VERIFY_THRESHOLD", 0.38)
+    SINGLE_FACE_THRESHOLD = _float_env("FACE_VERIFY_THRESHOLD", 0.38)
+    # Registration quality: min Laplacian variance (blur), min face size, brightness range
+    MIN_LAPLACIAN_VAR = _float_env("FACE_MIN_LAPLACIAN_VAR", 100.0)
+    MIN_FACE_SIZE_REG = int(_float_env("FACE_MIN_FACE_SIZE_REG", 80))
+    MIN_MEAN_BRIGHTNESS = _float_env("FACE_MIN_BRIGHTNESS", 40.0)
+    MAX_MEAN_BRIGHTNESS = _float_env("FACE_MAX_BRIGHTNESS", 220.0)
+
+    def __init__(self, face_repo: FaceRepository, user_repo: UserRepository,
                  spoof_detection: Optional[SpoofDetectionService] = None):
         self.face_repo = face_repo
         self.user_repo = user_repo
         self.use_insightface = INSIGHTFACE_AVAILABLE
-        
-        # Initialize InsightFace model if available
-        if self.use_insightface:
+        self.insightface_model_name: Optional[str] = None
+        self.insightface_error: Optional[str] = None  # Set when init fails, for diagnostics
+
+        if not INSIGHTFACE_AVAILABLE:
+            self.face_app = None
+            self.insightface_error = "insightface package not installed (ImportError). Run: pip install insightface onnxruntime"
+            print("⚠️ InsightFace not installed; using dlib for face verification.")
+        else:
             try:
-                # Initialize InsightFace app
-                # Try buffalo_l first (most accurate), fallback to antelopev2
-                try:
-                    self.face_app = insightface.app.FaceAnalysis(
-                        name='buffalo_l',  # Best accuracy model
-                        providers=['CPUExecutionProvider']
-                    )
-                    self.face_app.prepare(ctx_id=0, det_size=(640, 640))
-                    print("✅ InsightFace initialized with buffalo_l model (best accuracy)")
-                except Exception:
-                    # Fallback to antelopev2
-                    self.face_app = insightface.app.FaceAnalysis(
-                        name='antelopev2',
-                        providers=['CPUExecutionProvider']
-                    )
-                    self.face_app.prepare(ctx_id=0, det_size=(640, 640))
-                    print("✅ InsightFace initialized with antelopev2 model")
+                use_cpu_only = os.environ.get("FACE_USE_CPU", "").strip().lower() in ("1", "true", "yes")
+                for model_name in ("buffalo_l", "antelopev2", "buffalo_s"):
+                    providers_list = [["CPUExecutionProvider"]] if use_cpu_only else [["CUDAExecutionProvider", "CPUExecutionProvider"], ["CPUExecutionProvider"]]
+                    for providers in providers_list:
+                        try:
+                            self.face_app = insightface.app.FaceAnalysis(name=model_name, providers=providers)
+                            self.face_app.prepare(ctx_id=0, det_size=(640, 640))
+                            self.insightface_model_name = model_name
+                            print(f"✅ InsightFace initialized with {model_name} (providers: {providers})")
+                            break
+                        except Exception as e1:
+                            if providers == ["CUDAExecutionProvider", "CPUExecutionProvider"] and "CUDA" in str(e1):
+                                continue
+                            raise e1
+                    else:
+                        continue
+                    break
             except Exception as e:
-                print(f"WARNING: Failed to initialize InsightFace: {str(e)}")
-                print("Falling back to face_recognition library (dlib)")
+                import traceback
+                self.insightface_error = f"{type(e).__name__}: {e}"
                 self.use_insightface = False
                 self.face_app = None
-        else:
-            self.face_app = None
-            print("⚠️ Using face_recognition library (dlib) - InsightFace not installed")
+                print(f"WARNING: InsightFace failed to load: {e}")
+                traceback.print_exc()
+                print("Tip: pip install onnxruntime. Set FACE_USE_CPU=1 for CPU-only. Run GET /api/diagnose/insightface for details.")
         
         # Initialize spoof detection service
         if spoof_detection is None:
@@ -192,18 +207,43 @@ class FaceRecognitionService:
     def euclidean_distance(embedding1: np.ndarray, embedding2: np.ndarray) -> float:
         """Calculate euclidean distance between two embeddings (for dlib)"""
         return float(np.linalg.norm(embedding1 - embedding2))
-    
+
+    def _check_registration_quality(self, img_rgb: np.ndarray) -> Tuple[bool, Optional[str]]:
+        """Reject very blurry, tiny, or badly lit images so we don't store weak templates."""
+        h, w = img_rgb.shape[:2]
+        if min(w, h) < self.MIN_FACE_SIZE_REG:
+            return False, f"Image too small ({w}x{h}). Use at least {self.MIN_FACE_SIZE_REG}px on each side."
+        gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        if laplacian_var < self.MIN_LAPLACIAN_VAR:
+            return False, f"Image too blurry. Please use a clearer photo (quality: {laplacian_var:.0f}, min: {self.MIN_LAPLACIAN_VAR:.0f})."
+        mean_bright = float(np.mean(gray))
+        if mean_bright < self.MIN_MEAN_BRIGHTNESS:
+            return False, "Image too dark. Please improve lighting."
+        if mean_bright > self.MAX_MEAN_BRIGHTNESS:
+            return False, "Image too bright. Please reduce glare or use softer lighting."
+        return True, None
+
     def register_face(self, image_b64: str, user_id: str, 
                      check_duplicates: bool = True) -> Tuple[bool, Optional[str], Optional[float]]:
         """
-        Register face for a user
-        NOTE: Spoof detection is NOT performed during registration - only during login
+        Register face for a user using InsightFace ArcFace.
+        Only 512D ArcFace embeddings are stored. Spoof detection is not run at registration.
         Returns: (success, error_message, distance_if_duplicate)
         """
-        # Decode and extract face
+        if not self.use_insightface:
+            return False, (
+                "Face registration requires InsightFace. Please install: pip install insightface onnxruntime. "
+                "Then restart the server."
+            ), None
+
+        # Decode, quality check, then extract face with InsightFace only
         try:
             img_rgb = self.decode_base64_image(image_b64)
-            embedding, face_count = self.get_face_embedding(img_rgb)
+            ok, msg = self._check_registration_quality(img_rgb)
+            if not ok:
+                return False, msg, None
+            embedding, face_count = self.get_face_embedding_insightface(img_rgb)
             
             if embedding is None:
                 if face_count == 0:
@@ -260,19 +300,10 @@ class FaceRecognitionService:
                             # Face registered to another account
                             return False, "This face is already registered to another account", best_distance
         
-        # Register the face (store image for later viewing)
-        # Store both embeddings if both models are available (for dual-model verification)
-        dlib_embedding = None
-        if self.use_insightface and FACE_RECOGNITION_AVAILABLE:
-            # If using InsightFace as primary, also extract dlib embedding for verification
-            try:
-                dlib_embedding, _ = self.get_face_embedding_dlib(img_rgb)
-                if dlib_embedding is not None:
-                    print(f"INFO: Storing both InsightFace (512D) and dlib (128D) embeddings for dual-model verification")
-            except Exception as e:
-                print(f"WARNING: Could not extract dlib embedding for dual-model verification: {str(e)}")
-        
-        face_encoding = FaceEncoding(user_id=user_id, encoding=embedding, image_b64=image_b64, encoding_dlib=dlib_embedding)
+        # Store only InsightFace ArcFace 512D
+        if len(embedding) != 512:
+            return False, f"Invalid embedding dimension ({len(embedding)}). InsightFace ArcFace must be 512D.", None
+        face_encoding = FaceEncoding(user_id=user_id, encoding=embedding, image_b64=image_b64, encoding_dlib=None)
         self.face_repo.save(face_encoding)
         
         # Update user's face_registered status
@@ -285,173 +316,112 @@ class FaceRecognitionService:
         
         return True, None, None
     
-    def verify_face(self, image_b64: str) -> Tuple[bool, Optional[str], Optional[float]]:
+    def verify_face(self, image_b64: str) -> Tuple[bool, Optional[str], Optional[float], Optional[float], Optional[float]]:
         """
-        Verify face for login
-        Returns: (success, user_id_if_found, distance)
-        Note: distance = -1.0 indicates spoofed face detected
+        Verify face for login.
+        Anti-spoof: Silent Face (full frame + bbox) or GAN (face crop).
+        Verification: InsightFace ArcFace only.
+        Returns: (success, user_id_if_found, distance, real_prob, spoof_prob).
+        distance = -1.0 => spoof; -2.0 => face too small. real_prob/spoof_prob from anti-spoof model when available.
         """
-        # Decode and extract face
+        try:
+            from activity_log import log as activity_log
+        except ImportError:
+            activity_log = None
+
+        def _log(reason=None, real_prob=None, spoof_prob=None, spoof_passed=None, verify_success=None, user_id=None, distance=None):
+            if activity_log is None:
+                return
+            if spoof_prob is None and self.spoof_detection:
+                spoof_prob = getattr(self.spoof_detection, "_last_spoof_prob", None)
+            activity_log(
+                event="face_verify",
+                reason=reason,
+                real_prob=real_prob,
+                spoof_prob=spoof_prob,
+                spoof_passed=spoof_passed,
+                verify_success=verify_success,
+                user_id=user_id,
+                distance=distance,
+            )
+
         img_rgb = self.decode_base64_image(image_b64)
-        
-        # IMPORTANT: For spoof detection, always use dlib face detection
-        # because the GAN model was trained on dlib-style face crops
-        # This ensures compatibility with the trained model
-        if not FACE_RECOGNITION_AVAILABLE:
-            return False, None, None
-        
-        # Use dlib for face detection (for spoof detection compatibility)
-        locations = face_recognition.face_locations(img_rgb, model='hog')
-        if len(locations) == 0:
-            return False, None, None
-        
-        if len(locations) > 1:
-            face_sizes = [(bottom - top) * (right - left) for top, right, bottom, left in locations]
-            largest_face_idx = face_sizes.index(max(face_sizes))
-            locations = [locations[largest_face_idx]]
-        
-        # Crop face for spoof detection using dlib coordinates (matches training data)
-        top, right, bottom, left = locations[0]
-        padding = 20
-        face_crop = img_rgb[max(0, top-padding):min(img_rgb.shape[0], bottom+padding),
-                           max(0, left-padding):min(img_rgb.shape[1], right+padding)]
-        import sys
-        sys.stdout.flush()
-        
-        # Now get embedding using InsightFace (if available) or dlib (fallback)
-        if self.use_insightface:
-            # Use InsightFace for better recognition accuracy
-            img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-            faces = self.face_app.get(img_bgr)
-            
-            if len(faces) == 0:
-                return False, None, None
-            
-            if len(faces) > 1:
-                face_sizes = [face.bbox[2] * face.bbox[3] for face in faces]
-                largest_face_idx = face_sizes.index(max(face_sizes))
-                face = faces[largest_face_idx]
-            else:
-                face = faces[0]
-            
-            # Get embedding from InsightFace
-            embedding = face.embedding
-            face_count = len(faces)
+        uses_full_frame = getattr(self.spoof_detection, "uses_full_frame", False)
+
+        # --- Get face and embedding from InsightFace (required for verification) ---
+        if not self.use_insightface:
+            _log(reason="insightface_unavailable")
+            return False, None, None, None, None
+        img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+        faces = self.face_app.get(img_bgr)
+        if len(faces) == 0:
+            _log(reason="no_face_detected")
+            return False, None, None, None, None
+        if len(faces) > 1:
+            face_sizes = [f.bbox[2] * f.bbox[3] for f in faces]
+            face = faces[int(np.argmax(face_sizes))]
         else:
-            # Fallback to dlib for embedding too
-            embedding = face_recognition.face_encodings(img_rgb, locations)[0]
-            face_count = len(locations)
-        
-        # Check face size first - prompt user to come closer if face is too small
-        MIN_RECOMMENDED_FACE_SIZE = 100  # Recommended minimum face size for good quality detection
-        face_height, face_width = face_crop.shape[0], face_crop.shape[1]
-        
-        if face_height < MIN_RECOMMENDED_FACE_SIZE or face_width < MIN_RECOMMENDED_FACE_SIZE:
-            print(f"INFO: Face too small ({face_height}x{face_width}) - recommending user to come closer")
-            # Return special distance -2.0 to indicate face too small (different from -1.0 for spoof)
-            return False, None, -2.0
-        
-        # Check for spoofing on the cropped face (before face recognition)
-        # IMPORTANT: Always run spoof detection - use STRICT thresholds for faces at right distance
+            face = faces[0]
+        embedding = face.embedding
+        bbox = face.bbox
+        face_w = int(bbox[2] - bbox[0])
+        face_h = int(bbox[3] - bbox[1])
+        MIN_RECOMMENDED_FACE_SIZE = 100
+        if face_w < MIN_RECOMMENDED_FACE_SIZE or face_h < MIN_RECOMMENDED_FACE_SIZE:
+            print(f"INFO: Face too small ({face_w}x{face_h}) - come closer")
+            _log(reason="face_too_small", distance=-2.0)
+            return False, None, -2.0, None, None
+
+        # --- Anti-spoof ---
+        real_prob, spoof_passed = None, True
         if self.spoof_detection is not None:
-            # Ensure face crop is valid (minimum size for processing)
-            MIN_FACE_SIZE_FOR_PROCESSING = 30  # Minimum size just to ensure we can process it
-            if face_crop.size == 0 or face_crop.shape[0] < MIN_FACE_SIZE_FOR_PROCESSING or face_crop.shape[1] < MIN_FACE_SIZE_FOR_PROCESSING:
-                print(f"WARNING: Face crop too small ({face_crop.shape[0]}x{face_crop.shape[1]}) to process - rejecting")
-                return False, None, -2.0  # Return -2.0 to indicate face too small
-            
-            # Additional quality check: ensure face has reasonable variance (not a flat/blank image)
-            face_gray = np.mean(face_crop, axis=2) if len(face_crop.shape) == 3 else face_crop
-            face_variance = np.var(face_gray)
-            MIN_VARIANCE = 200  # Minimum variance for a valid face image (EXTREMELY STRICT to reject flat images)
-            if face_variance < MIN_VARIANCE:
-                print(f"WARNING: Face image has low variance ({face_variance:.1f}) - possible flat/blank image - rejecting")
-                return False, None, -1.0
-            
-            # Run spoof detection with STRICT thresholds
-            is_real, error_msg, real_prob = self.spoof_detection.check_if_real(face_crop)
-            spoof_prob = getattr(self.spoof_detection, '_last_spoof_prob', 1.0 - real_prob)
-            print(f"SPOOF CHECK: is_real={is_real}, real_prob={real_prob:.3f}, spoof_prob={spoof_prob:.3f}, threshold={self.spoof_detection.REAL_FACE_THRESHOLD:.3f}, face_size={face_crop.shape[0]}x{face_crop.shape[1]}, variance={face_variance:.1f}")
-            
-            if not is_real:
-                # Return False with special distance -1.0 to indicate spoofed face
-                print(f"BLOCKED: Spoofed face detected - {error_msg}")
-                return False, None, -1.0
-            
-            # For faces at the right distance (>= 100x100), apply ADDITIONAL EXTREMELY strict checks
-            # Photos at the right distance can sometimes pass initial spoof detection
-            if face_height >= MIN_RECOMMENDED_FACE_SIZE and face_width >= MIN_RECOMMENDED_FACE_SIZE:
-                print(f"INFO: Face at recommended size ({face_height}x{face_width}) - applying additional EXTREMELY strict spoof checks")
-                # Require extremely high real_prob for faces at right distance (they should be clearly real)
-                if real_prob < 0.95:  # EXTREMELY strict - require 95% confidence for faces at right distance
-                    print(f"BLOCKED: Face at right distance but insufficient real_prob ({real_prob:.2%} < 95%) - likely spoof")
-                    return False, None, -1.0
-                # Also check if spoof_prob is suspiciously high even if real_prob passes
-                if spoof_prob > 0.08:  # If spoof confidence > 8%, block it (EXTREMELY strict)
-                    print(f"BLOCKED: Face at right distance but spoof_prob too high ({spoof_prob:.2%} > 8%) - likely spoof")
-                    return False, None, -1.0
-                # Additional check: require even larger advantage for faces at right distance
-                if (real_prob - spoof_prob) < 0.35:  # Require 35% advantage (EXTREMELY strict)
-                    print(f"BLOCKED: Face at right distance but advantage too small ({(real_prob - spoof_prob):.2%} < 35%) - likely spoof")
-                    return False, None, -1.0
-            
-            print(f"PASSED: Real face confirmed (confidence: {real_prob:.2%})")
-        
-        if embedding is None:
-            return False, None, None
-        
-        # OPTION 4: Primary + Verification approach
-        # Step 1: Run InsightFace as primary (faster, better accuracy)
-        print("=" * 50)
-        print("PRIMARY VERIFICATION: Running InsightFace...")
-        primary_success, primary_user, primary_distance = self._verify_with_embedding(embedding, model_type='insightface')
-        
-        if not primary_success:
-            print(f"PRIMARY FAILED: InsightFace did not find a match (distance: {primary_distance})")
-            return False, primary_user, primary_distance
-        
-        print(f"PRIMARY PASSED: InsightFace found match - user: {primary_user}, distance: {primary_distance:.3f}")
-        
-        # Step 2: If primary passes, run dlib as verification (both must agree)
-        # Check if user has dlib embedding stored (for backward compatibility)
-        user_face_encoding = self.face_repo.find_by_user_id(primary_user)
-        has_dlib_embedding = user_face_encoding and user_face_encoding.encoding_dlib is not None
-        
-        if FACE_RECOGNITION_AVAILABLE and has_dlib_embedding:
-            print("VERIFICATION: Running dlib verification...")
-            dlib_embedding, _ = self.get_face_embedding_dlib(img_rgb)
-            
-            if dlib_embedding is None:
-                print("VERIFICATION FAILED: dlib could not extract embedding")
-                return False, primary_user, primary_distance
-            
-            verification_success, verification_user, verification_distance = self._verify_with_embedding(dlib_embedding, model_type='dlib')
-            
-            if not verification_success:
-                print(f"VERIFICATION FAILED: dlib did not find a match (distance: {verification_distance})")
-                print(f"SECURITY: Models disagree - InsightFace found {primary_user} but dlib found no match")
-                return False, primary_user, verification_distance
-            
-            # Both models must agree on the same user
-            if primary_user != verification_user:
-                print(f"VERIFICATION FAILED: Models disagree - InsightFace: {primary_user}, dlib: {verification_user}")
-                print(f"SECURITY: Both models found matches but for different users - rejecting for security")
-                return False, primary_user, max(primary_distance, verification_distance)
-            
-            print(f"VERIFICATION PASSED: Both models agree - user: {verification_user}")
-            print(f"  InsightFace distance: {primary_distance:.3f}, dlib distance: {verification_distance:.3f}")
-            print("=" * 50)
-            # Return average distance from both models
-            avg_distance = (primary_distance + verification_distance) / 2.0
-            return True, verification_user, avg_distance
-        else:
-            # dlib not available or user doesn't have dlib embedding - use InsightFace only
-            if not FACE_RECOGNITION_AVAILABLE:
-                print("VERIFICATION SKIPPED: dlib not available, using InsightFace result only")
+            if uses_full_frame:
+                is_real, error_msg, real_prob = self.spoof_detection.check_if_real(img_rgb, face_bbox=bbox.tolist())
             else:
-                print(f"VERIFICATION SKIPPED: User {primary_user} doesn't have dlib embedding (backward compatibility)")
-            print("=" * 50)
-            return primary_success, primary_user, primary_distance
+                if not FACE_RECOGNITION_AVAILABLE:
+                    _log(reason="dlib_unavailable")
+                    return False, None, None, None, None
+                locations = face_recognition.face_locations(img_rgb, model="hog")
+                if len(locations) == 0:
+                    _log(reason="no_face_detected")
+                    return False, None, None, None, None
+                if len(locations) > 1:
+                    sizes = [(b - t) * (r - l) for t, r, b, l in locations]
+                    locations = [locations[np.argmax(sizes)]]
+                top, right, bottom, left = locations[0]
+                padding = 20
+                face_crop = img_rgb[
+                    max(0, top - padding) : min(img_rgb.shape[0], bottom + padding),
+                    max(0, left - padding) : min(img_rgb.shape[1], right + padding),
+                ]
+                if face_crop.size == 0 or face_crop.shape[0] < 30 or face_crop.shape[1] < 30:
+                    _log(reason="face_too_small", distance=-2.0)
+                    return False, None, -2.0, None, None
+                face_gray = np.mean(face_crop, axis=2) if len(face_crop.shape) == 3 else face_crop
+                if np.var(face_gray) < 200:
+                    _log(reason="spoof_detected", spoof_passed=False, distance=-1.0)
+                    return False, None, -1.0, None, None
+                is_real, error_msg, real_prob = self.spoof_detection.check_if_real(face_crop)
+            spoof_passed = is_real
+            if not is_real:
+                spoof_prob = getattr(self.spoof_detection, "_last_spoof_prob", None)
+                print(f"BLOCKED: Spoof detected - {error_msg}")
+                _log(real_prob=real_prob, spoof_prob=spoof_prob, spoof_passed=False, reason="spoof_detected", distance=-1.0)
+                return False, None, -1.0, real_prob, spoof_prob
+            print(f"PASSED: Real face (confidence: {real_prob:.2%})")
+
+        # --- Verification: InsightFace ArcFace only ---
+        all_encodings = self.face_repo.load_all()
+        if not all_encodings or len(all_encodings) == 0:
+            _log(real_prob=real_prob, spoof_passed=spoof_passed, reason="no_registered_faces", distance=-3.0)
+            return False, None, -3.0, real_prob, None
+
+        success, user_id, distance = self._verify_with_embedding(embedding, model_type="insightface")
+        spoof_prob = getattr(self.spoof_detection, "_last_spoof_prob", None) if self.spoof_detection else None
+        _log(real_prob=real_prob, spoof_prob=spoof_prob, spoof_passed=spoof_passed, verify_success=success, user_id=user_id, distance=distance, reason=None if success else "match_failed")
+        if success:
+            print(f"VERIFY: InsightFace ArcFace match - user: {user_id}, distance: {distance:.3f}")
+        return success, user_id, distance, real_prob, spoof_prob
     
     def _verify_with_embedding(self, embedding: np.ndarray, model_type: str = 'insightface') -> Tuple[bool, Optional[str], Optional[float]]:
         """

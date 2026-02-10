@@ -1,48 +1,43 @@
 # Face Recognition Authentication Logic
 
-## Face Recognition Engine
+## Stack Overview
 
-**Current System:** Uses **InsightFace (ArcFace)** with automatic fallback to dlib's face_recognition library.
+| Role | Technology | Purpose |
+|------|------------|---------|
+| **Anti-spoofing** | **Silent Face** (minivision-ai) | Silent liveness: detect real face vs photo/screen spoof. Uses full frame + face bbox. |
+| **Fallback anti-spoof** | GAN predictor (ResNet18) | If Silent Face models are not set up, uses pre-cropped face crop. |
+| **Verification** | **InsightFace ArcFace** | 512D embeddings, cosine distance; single source of truth for “who is this?” |
 
-**InsightFace Benefits:**
-- ✅ **Better glasses handling** - Handles occlusions (glasses, hats) much better than dlib
-- ✅ **512-dimensional embeddings** - More accurate than 128D dlib embeddings
-- ✅ **Deep learning model** - Trained on large datasets with diverse face variations
-- ✅ **Automatic face alignment** - Better preprocessing for recognition
+**InsightFace (ArcFace) benefits:**
+- 512-dimensional embeddings, state-of-the-art accuracy
+- Good handling of glasses and occlusions
+- Used for both face detection (bbox for Silent Face) and identity verification
 
-**Fallback:** If InsightFace is not available, system automatically falls back to face_recognition library (dlib).
+**Silent Face:** Silent liveness (no gestures); when available the app uses it on the full image with the face bbox from InsightFace. If Silent Face model files are not present, the app falls back to the GAN-based spoof detector on a face crop.
 
 ## Current Authentication Flow
 
-### Step 1: Face Detection
-1. User scans face via camera
-2. System extracts face embedding:
-   - **InsightFace**: 512-dimensional vector (better accuracy)
-   - **dlib fallback**: 128-dimensional vector
-3. Validates exactly 1 face detected
+### Step 1: Face detection (InsightFace)
+1. User scans face via camera.
+2. InsightFace detects face(s) and returns bbox + 512D embedding.
+3. Exactly one face required; largest face used if multiple.
 
-### Step 2: Face Matching
-System compares scanned face against all registered faces:
+### Step 2: Anti-spoofing
+- **If Silent Face is active:** Run Silent Face on full frame + InsightFace bbox → real vs spoof.
+- **Else (GAN):** Crop face (dlib locations), run GAN predictor on crop → real vs spoof.
+- If classified as spoof → login rejected (distance = -1.0).
 
-**If Multiple Faces Registered:**
-- Calculates distance to ALL registered faces
-  - **InsightFace**: Uses cosine distance (better for glasses)
-  - **dlib**: Uses euclidean distance
-- Finds best match (lowest distance)
-- Finds second-best match
-- **Requires:**
-  - Best distance ≤ 0.35 (VERIFY_THRESHOLD for InsightFace, 0.3 for dlib)
-  - Best match must be ≥ 0.15 better than second-best (InsightFace) or ≥ 0.2 (dlib)
-  - This ensures unambiguous match
+### Step 3: Face matching (InsightFace ArcFace only)
+System compares the 512D embedding to all registered faces (cosine distance):
 
-**If Only One Face Registered:**
-- Calculates distance to the single registered face
-- **Requires:**
-  - Distance ≤ 0.30 (SINGLE_FACE_THRESHOLD for InsightFace - more lenient for glasses)
-  - Distance ≤ 0.25 (SINGLE_FACE_THRESHOLD for dlib)
-  - This prevents false matches when only one face exists
+**If multiple faces registered:**
+- Best distance ≤ VERIFY_THRESHOLD (0.38)
+- Best match ≥ 0.15 better than second-best (unambiguous match)
 
-### Step 3: Decision
+**If only one face registered:**
+- Distance ≤ SINGLE_FACE_THRESHOLD (0.38)
+
+### Step 4: Decision
 
 **ACCEPT Login If:**
 - Distance ≤ threshold (0.3 for multi-face, 0.25 for single-face)
@@ -109,3 +104,13 @@ System compares scanned face against all registered faces:
 2. Re-register your face with better lighting
 3. Ensure face is clearly visible and centered
 
+## Optional: Silent Face anti-spoofing setup
+
+To use **Silent Face** for anti-spoofing (silent liveness):
+
+1. Clone [minivision-ai/Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing) next to or inside the project.
+2. Download the anti-spoof `.pth` models (see that repo’s README; e.g. Baidu link or `resources/anti_spoof_models`).
+3. Point the app at the model directory, or place models in:
+   `Silent-Face-Anti-Spoofing/resources/anti_spoof_models/`.
+
+If the directory or `.pth` files are missing, the app uses the GAN predictor (face-crop spoof detection) instead.

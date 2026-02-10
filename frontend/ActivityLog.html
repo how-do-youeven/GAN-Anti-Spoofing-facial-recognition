@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face Login Activity Log</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #1a1d23;
+            color: #e2e4e9;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        .subtitle {
+            color: #8b909a;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .btn {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            background: #2d323b;
+            color: #e2e4e9;
+        }
+        .btn:hover { background: #3d424b; }
+        .btn.clear { background: #5c2a2a; color: #f0a0a0; }
+        .btn.clear:hover { background: #6c3a3a; }
+        .refresh-info {
+            color: #6b7280;
+            font-size: 13px;
+        }
+        .table-wrap {
+            overflow-x: auto;
+            border-radius: 10px;
+            background: #22262d;
+            border: 1px solid #2d323b;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #2d323b;
+        }
+        th {
+            background: #2d323b;
+            color: #9ca3af;
+            font-weight: 600;
+        }
+        tr:hover { background: #282c33; }
+        .time { white-space: nowrap; color: #8b909a; }
+        .prob { font-variant-numeric: tabular-nums; }
+        .pass { color: #6ee7b7; }
+        .fail { color: #f87171; }
+        .reason { color: #fbbf24; max-width: 200px; }
+        .status-ok { color: #6ee7b7; }
+        .status-fail { color: #f87171; }
+        .status-none { color: #6b7280; }
+        #error {
+            color: #f87171;
+            margin-bottom: 12px;
+        }
+        a { color: #60a5fa; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>Face Login Activity Log</h1>
+    <p class="subtitle">Real vs fake (spoof) probability and verification results. Auto-refreshes every 2s.</p>
+    <p class="subtitle" style="margin-top: -12px;">Open this page via the backend: <strong><a href="http://localhost:8000/activity-log">http://localhost:8000/activity-log</a></strong> (so the API is on the same server).</p>
+    <div class="toolbar">
+        <button class="btn" id="refreshBtn">Refresh now</button>
+        <button class="btn clear" id="clearBtn">Clear log</button>
+        <span class="refresh-info" id="refreshInfo"></span>
+    </div>
+    <div id="error"></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Real (prob)</th>
+                    <th>Fake / Spoof (prob)</th>
+                    <th>Spoof check</th>
+                    <th>Verification</th>
+                    <th>User ID</th>
+                    <th>Distance</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+        </table>
+    </div>
+    <p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
+        <a href="login.html">← Back to Login</a>
+    </p>
+
+    <script>
+        const BACKEND_URL = "http://localhost:8000";
+        const tbody = document.getElementById("tbody");
+        const errorEl = document.getElementById("error");
+        const refreshInfo = document.getElementById("refreshInfo");
+        let refreshInterval;
+
+        function fmtProb(v) {
+            if (v == null) return "—";
+            return (v * 100).toFixed(1) + "%";
+        }
+
+        function fmtDistance(d) {
+            if (d == null) return "—";
+            if (d === -1) return "spoof";
+            if (d === -2) return "too small";
+            if (d === -3) return "no faces";
+            return Number(d).toFixed(3);
+        }
+
+        function row(entry) {
+            const spoofClass = entry.spoof_passed === true ? "pass" : entry.spoof_passed === false ? "fail" : "status-none";
+            const verifyClass = entry.verify_success === true ? "pass" : entry.verify_success === false ? "fail" : "status-none";
+            const spoofText = entry.spoof_passed === true ? "PASS" : entry.spoof_passed === false ? "FAIL" : "—";
+            const verifyText = entry.verify_success === true ? "OK" : entry.verify_success === false ? "FAIL" : "—";
+            return `
+                <tr>
+                    <td class="time">${entry.time || "—"}</td>
+                    <td class="prob">${fmtProb(entry.real_prob)}</td>
+                    <td class="prob">${fmtProb(entry.spoof_prob)}</td>
+                    <td class="${spoofClass}">${spoofText}</td>
+                    <td class="${verifyClass}">${verifyText}</td>
+                    <td>${entry.user_id || "—"}</td>
+                    <td class="prob">${fmtDistance(entry.distance)}</td>
+                    <td class="reason">${entry.reason || "—"}</td>
+                </tr>
+            `;
+        }
+
+        async function fetchLog() {
+            try {
+                errorEl.textContent = "";
+                const r = await fetch(`${BACKEND_URL}/api/activity-log?limit=100`);
+                const text = await r.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseErr) {
+                    if (text.trim().toLowerCase().startsWith("<!")) {
+                        errorEl.textContent = "Server at " + BACKEND_URL + " returned a web page instead of JSON. Open the Activity Log via the backend (e.g. http://localhost:8000/activity-log) so the API and page use the same origin, or ensure the Face Login backend is running on port 8000.";
+                    } else {
+                        errorEl.textContent = "Invalid response from server: " + text.slice(0, 80) + "...";
+                    }
+                    tbody.innerHTML = "<tr><td colspan='8' style='color:#f87171'>Could not load log.</td></tr>";
+                    return;
+                }
+                if (!r.ok) throw new Error(data.error || "Failed to load log");
+                tbody.innerHTML = (data.entries || []).map(row).join("") || "<tr><td colspan='8' style='color:#6b7280'>No activity yet. Use face login to generate entries.</td></tr>";
+                refreshInfo.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+            } catch (e) {
+                errorEl.textContent = "Could not load activity log. Is the backend running at " + BACKEND_URL + "? " + e.message;
+                tbody.innerHTML = "<tr><td colspan='8' style='color:#f87171'>Error loading log.</td></tr>";
+            }
+        }
+
+        async function clearLog() {
+            try {
+                await fetch(`${BACKEND_URL}/api/activity-log/clear`, { method: "POST" });
+                await fetchLog();
+            } catch (e) {
+                errorEl.textContent = "Clear failed: " + e.message;
+            }
+        }
+
+        document.getElementById("refreshBtn").addEventListener("click", fetchLog);
+        document.getElementById("clearBtn").addEventListener("click", clearLog);
+        fetchLog();
+        refreshInterval = setInterval(fetchLog, 2000);
+    </script>
+</body>
+</html>

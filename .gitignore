@@ -22,6 +22,7 @@ fyp_face_login/known_faces.json
 fyp_face_login/admin_config.json
 fyp_face_login/feedback.json
 fyp_face_login/admin_config.json.backup
+fyp_face_login/audit_face.jsonl
 
 # IDE
 .vscode/

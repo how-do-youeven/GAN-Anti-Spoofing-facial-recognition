@@ -1,6 +1,7 @@
 """
 Face Repository
-Handles data access operations for Face Encoding entities
+Persistence for InsightFace ArcFace face encodings (one per user).
+Storage: JSON file; each record is one FaceEncoding (512D embedding + optional image).
 """
 import json
 import os
@@ -9,8 +10,21 @@ from typing import Dict, Optional
 from entities.face_encoding import FaceEncoding
 
 
+# Storage schema (known_faces.json):
+# {
+#   "<user_id>": {
+#     "user_id": "<user_id>",
+#     "encoding": [float, ...],   # 512D InsightFace ArcFace vector
+#     "embedding_type": "insightface_arcface",
+#     "embedding_dim": 512,
+#     "image_b64": "<optional base64 string>",
+#     "encoding_dlib": [float, ...]  # optional, legacy 128D
+#   }
+# }
+
+
 class FaceRepository:
-    """Repository for Face Encoding entity data access"""
+    """Repository for InsightFace ArcFace face encodings (load/save by user_id)."""
     
     def __init__(self, db_path: str = "known_faces.json"):
         self.db_path = db_path
