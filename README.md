@@ -94,23 +94,26 @@ sudo apt-get install cmake
    pip install -r requirements.txt
    ```
 
+4. **Silent Face anti-spoof models** are included in `anti_spoof_models/` at the project root, so Silent Face works after clone. If you remove that folder, the app will fall back to the GAN predictor (if available) or run without anti-spoof; you can force GAN-only with `SPOOF_BACKEND=gan`.
+
 ## 🚀 Running the Application
 
 ### Start the Backend Server
 
-**macOS/Linux:**
+From the project root (after cloning and installing dependencies):
+
+**Option 1 – from inside the package (recommended):**
 ```bash
 cd fyp_face_login
 python app.py
 ```
 
-**Windows:**
+**Option 2 – from project root:**
 ```bash
-cd fyp_face_login
-python app.py
+python fyp_face_login/app.py
 ```
 
-The server will start on `http://localhost:8000`.
+The server will start on `http://localhost:8000`. Data files (`user_accounts.json`, `known_faces.json`, etc.) are created inside `fyp_face_login/` either way.
 
 **Optional environment variables** (set before running):
 - `SPOOF_BACKEND=gan` — Use only the GAN predictor for anti-spoof (skip Silent Face). Use if Silent Face models are not set up.
