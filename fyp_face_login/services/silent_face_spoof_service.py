@@ -32,7 +32,13 @@ class SilentFaceSpoofService:
     def __init__(self, model_dir: Optional[str] = None, device_id: int = 0):
         if model_dir is None:
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            model_dir = os.path.join(project_root, "Silent-Face-Anti-Spoofing", "resources", "anti_spoof_models")
+            # Prefer repo-root anti_spoof_models/ (so clone can add .pth files there without full Silent-Face clone)
+            root_models = os.path.join(project_root, "anti_spoof_models")
+            silent_face_models = os.path.join(project_root, "Silent-Face-Anti-Spoofing", "resources", "anti_spoof_models")
+            if os.path.isdir(root_models):
+                model_dir = root_models
+            else:
+                model_dir = silent_face_models
         self.model_dir = os.path.abspath(model_dir)
         self.device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
         self.image_cropper = CropImage()
