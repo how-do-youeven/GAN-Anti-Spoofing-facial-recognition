@@ -1,6 +1,7 @@
 # Facial Recognition Login System - Student Portal
 
 A full-stack web application implementing facial recognition authentication for a school management system. Students can create accounts, register their faces, and login using either facial recognition or traditional email/password authentication.
+https://docs.google.com/presentation/d/13y1RYDyfcgxdZ25sXSq0KntCW7VTR62r/edit?usp=sharing&ouid=102197409145740141481&rtpof=true&sd=true
 
 ## 🚀 Features
 
@@ -373,21 +374,13 @@ This project is part of a Final Year Project (FYP) for academic purposes.
 
 ## 👥 Contributors
 
-- [Your Name]
-- [Groupmate 1]
-- [Groupmate 2]
+- Ng Jun Xi
+- Timothy
+- Liu Yu Chen
+- Loh Syn Kiat
+- Xavier
+- Raven
 
 ## 📞 Support
 
-For technical support or questions, please contact the development team.
 
----
-
-**Note**: This is a demonstration project. For production deployment, consider:
-- Migrating to a proper database (PostgreSQL, MySQL)
-- Using bcrypt for password hashing
-- Implementing HTTPS
-- Tightening rate limits and CORS
-- Implementing proper session management
-- Adding email verification
-- Setting up proper logging and monitoring (audit log is already persisted to file)
